@@ -9,12 +9,14 @@
 
 #pragma once
 
-#include "GBDependentTensorBase.h"
+#include "Material.h"
+#include "DerivativeMaterialInterface.h"
+#include "RankTwoTensor.h"
 
 /**
  * GB dependent diffusivity Ref. Forest, MSMSE, 2015
  */
-class GBDependentDiffusivity : public GBDependentTensorBase
+class GBDependentDiffusivity : public DerivativeMaterialInterface<Material>
 {
 public:
   static InputParameters validParams();
@@ -24,4 +26,7 @@ public:
 protected:
   virtual void initQpStatefulProperties();
   virtual void computeQpProperties();
+
+    Real _bulk_parameter;
+    MaterialProperty<RealTensorValue> & _gb_dependent_tensor;
 };

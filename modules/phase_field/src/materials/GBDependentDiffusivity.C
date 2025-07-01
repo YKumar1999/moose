@@ -14,13 +14,18 @@ registerMooseObject("PhaseFieldApp", GBDependentDiffusivity);
 InputParameters
 GBDependentDiffusivity::validParams()
 {
-  InputParameters params = GBDependentTensorBase::validParams();
+  InputParameters params = Material::validParams();
+  params.addParam<Real>("bulk_parameter", 0.0, "Parameter value of bulk material");
+  params.addParam<MaterialPropertyName>("gb_tensor_prop_name", "Name of GB tensor property");
   params.addClassDescription("Compute diffusivity rank two tensor based on GB phase variable");
   return params;
 }
 
 GBDependentDiffusivity::GBDependentDiffusivity(const InputParameters & parameters)
-  : GBDependentTensorBase(parameters)
+  : DerivativeMaterialInterface<Material>(parameters),
+      _bulk_parameter(getParam<Real>("bulk_parameter")),
+          _gb_dependent_tensor(
+        declareProperty<RealTensorValue>(getParam<MaterialPropertyName>("gb_tensor_prop_name")))
 {
 }
 
@@ -36,7 +41,6 @@ GBDependentDiffusivity::computeQpProperties()
   RankTwoTensor iden(RankTwoTensor::initIdentity);
   RankTwoTensor gb_tensor;
 
-  gb_tensor = (1.0 - _gb[_qp]) * _bulk_parameter * iden +
-              _gb[_qp] * _gb_parameter * (iden - _gb_normal_tensor[_qp]);
+  gb_tensor = _bulk_parameter * iden;
   gb_tensor.fillRealTensor(_gb_dependent_tensor[_qp]);
 }
