@@ -50,7 +50,7 @@ FluxBasedStrainIncrement::computeQpProperties()
 {
   computeFluxGradTensor();
 
-  _strain_increment[_qp] = -0.5 * (_flux_grad_tensor + _flux_grad_tensor.transpose()) + (1/3) * _flux_grad_tensor.trace() * iden;
+  _strain_increment[_qp] = -0.5 * (_flux_grad_tensor + _flux_grad_tensor.transpose());
   _strain_increment[_qp] *= _dt;
 }
 
