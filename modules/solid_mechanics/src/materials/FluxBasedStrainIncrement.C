@@ -23,6 +23,14 @@ FluxBasedStrainIncrement::validParams()
   params.addCoupledVar("gb", "Grain boundary order parameter");
   params.addRequiredParam<MaterialPropertyName>("property_name",
                                                 "Name of diffusive strain increment property");
+  params.addRequiredParam<MaterialPropertyName>("flux_tensor_name","Name of flux tensor value");
+  params.addRequiredParam<MaterialPropertyName>("flux_total_name","Name of flux total");
+  params.addRequiredParam<MaterialPropertyName>("flux_transpose_name","Name of flux transpose");
+  params.addRequiredParam<MaterialPropertyName>("flux_volume_name","Name of flux volume");
+  params.addRequiredParam<MaterialPropertyName>("flux_shear_name","Name of shear value");
+  params.addRequiredParam<MaterialPropertyName>("flux_trace_name","Name of trace value");
+  params.addRequiredParam<MaterialPropertyName>("flux_identity_name","Name of identity tensor");
+  params.addRequiredParam<MaterialPropertyName>("flux_Antisymmetric_name","Name of antisymmetric tensor");
   return params;
 }
 
@@ -35,7 +43,24 @@ FluxBasedStrainIncrement::FluxBasedStrainIncrement(const InputParameters & param
     _grad_jz(_has_zflux ? &coupledGradient("zflux") : nullptr),
     _gb(isCoupled("gb") ? coupledValue("gb") : _zero),
     _strain_increment(
-        declareProperty<RankTwoTensor>(getParam<MaterialPropertyName>("property_name")))
+        declareProperty<RankTwoTensor>(getParam<MaterialPropertyName>("property_name"))),
+    _flux_trace(declareProperty<Real>(getParam<MaterialPropertyName>("flux_trace_name"))),
+    _flux_tensor(
+        declareProperty<RankTwoTensor>(getParam<MaterialPropertyName>("flux_tensor_name"))),
+    _flux_shear(
+        declareProperty<RankTwoTensor>(getParam<MaterialPropertyName>("flux_shear_name"))),
+    _flux_total(
+        declareProperty<RankTwoTensor>(getParam<MaterialPropertyName>("flux_total_name"))),
+    _flux_volum(
+        declareProperty<RankTwoTensor>(getParam<MaterialPropertyName>("flux_volume_name"))),
+    _flux_transpose(
+        declareProperty<RankTwoTensor>(getParam<MaterialPropertyName>("flux_transpose_name"))),
+    _flux_identity(
+        declareProperty<RankTwoTensor>(getParam<MaterialPropertyName>("flux_identity_name"))),
+    _flux_antisymmetric(
+        declareProperty<RankTwoTensor>(getParam<MaterialPropertyName>("flux_Antisymmetric_name")))
+
+
 {
 }
 
@@ -49,9 +74,20 @@ void
 FluxBasedStrainIncrement::computeQpProperties()
 {
   computeFluxGradTensor();
+  computeIdentityTensor();
 
-  _strain_increment[_qp] = -0.5 * (_flux_grad_tensor + _flux_grad_tensor.transpose());
+  _strain_increment[_qp] = -0.5 * (_flux_grad_tensor + _flux_grad_tensor.transpose()) + 0.5 * _flux_grad_tensor.trace() * _Identity_tensor; 
   _strain_increment[_qp] *= _dt;
+  //Storing the tensor value
+  _flux_trace[_qp] = 0.5 * _flux_grad_tensor.trace();
+  _flux_shear[_qp] = 0.5 * (_flux_grad_tensor + _flux_grad_tensor.transpose()) - 0.5 * _flux_grad_tensor.trace() * _Identity_tensor;
+  _flux_tensor[_qp] = _flux_grad_tensor;
+  _flux_total[_qp] = 0.5 * (_flux_grad_tensor + _flux_grad_tensor.transpose());
+  _flux_volum[_qp] = 0.5 * _flux_grad_tensor.trace() * _Identity_tensor;
+  _flux_transpose[_qp] = 0.5 * _flux_grad_tensor.transpose();
+  _flux_identity[_qp] = _Identity_tensor;
+  _flux_antisymmetric[_qp] = 0.5 * (_flux_grad_tensor - _flux_grad_tensor.transpose());
+
 }
 
 void
@@ -67,3 +103,48 @@ FluxBasedStrainIncrement::computeFluxGradTensor()
   if (_has_zflux)
     _flux_grad_tensor.fillRow(2, (*_grad_jz)[_qp]);
 }
+
+// void
+// FluxBasedStrainIncrement::computeIdentityTensor()
+// {
+//   RankTwoTensor iden(RankTwoTensor::initIdentity);
+
+//   _Identity_tensor.zero();
+
+//   _Identity_tensor(0,0) = iden(0,0);
+
+//   if (_has_yflux)
+//   {
+//     _Identity_tensor(1,0) = iden(1,0);
+//     _Identity_tensor(0,1) = iden(0,1);
+//     _Identity_tensor(1,1) = iden(1,1);
+//   }
+
+//   if (_has_zflux)
+//   {
+//     _Identity_tensor(2,0) = iden(2,0);
+//     _Identity_tensor(0,2) = iden(0,2);
+//     _Identity_tensor(2,2) = iden(2,2);
+//   }
+// }
+
+// alternate to test!
+void
+FluxBasedStrainIncrement::computeIdentityTensor()
+{
+  RankTwoTensor iden(RankTwoTensor::initIdentity);
+  _Identity_tensor.zero();
+
+  _Identity_tensor.fillRow(0, iden.row(0));
+
+  if (_has_yflux)
+  {
+    _Identity_tensor.fillRow(1, iden.row(1));
+  }
+
+  if (_has_zflux)
+  {
+    _Identity_tensor.fillRow(2, iden.row(2));
+  }
+}
+
