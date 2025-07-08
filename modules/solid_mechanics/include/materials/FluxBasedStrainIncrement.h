@@ -30,6 +30,8 @@ protected:
 
   virtual void computeFluxGradTensor();
 
+  virtual void computeIdentityTensor();
+
   const VariableGradient * const _grad_jx;
   bool _has_yflux;
   bool _has_zflux;
@@ -39,6 +41,17 @@ protected:
   const VariableValue & _gb;
 
   MaterialProperty<RankTwoTensor> & _strain_increment;
+  MaterialProperty<RankTwoTensor> & _flux_tensor;
+  MaterialProperty<RankTwoTensor> & _flux_shear;
+  MaterialProperty<RankTwoTensor> & _flux_total;
+  MaterialProperty<RankTwoTensor> & _flux_deviotoric_localC;
+  MaterialProperty<RankTwoTensor> & _flux_transpose;
+  MaterialProperty<RankTwoTensor> & _flux_identity;
+
+  const MaterialProperty<Real> & _Lambda_prefactor_J;
+
+  MaterialProperty<Real> & _flux_trace;
 
   RankTwoTensor _flux_grad_tensor;
+  RankTwoTensor _Identity_tensor;
 };
