@@ -23,6 +23,10 @@ FluxBasedStrainIncrement::validParams()
   params.addCoupledVar("gb", "Grain boundary order parameter");
   params.addRequiredParam<MaterialPropertyName>("property_name",
                                                 "Name of diffusive strain increment property");
+  params.addRequiredParam<MaterialPropertyName>("flux_tensor_name","Name of flux tensor value");
+  params.addRequiredParam<MaterialPropertyName>("flux_total_name","Name of flux total");
+  params.addRequiredParam<MaterialPropertyName>("flux_transpose_name","Name of flux transpose");
+
   return params;
 }
 
@@ -35,7 +39,15 @@ FluxBasedStrainIncrement::FluxBasedStrainIncrement(const InputParameters & param
     _grad_jz(_has_zflux ? &coupledGradient("zflux") : nullptr),
     _gb(isCoupled("gb") ? coupledValue("gb") : _zero),
     _strain_increment(
-        declareProperty<RankTwoTensor>(getParam<MaterialPropertyName>("property_name")))
+        declareProperty<RankTwoTensor>(getParam<MaterialPropertyName>("property_name"))),
+    _flux_tensor(
+        declareProperty<RankTwoTensor>(getParam<MaterialPropertyName>("flux_tensor_name"))),
+    _flux_total(
+        declareProperty<RankTwoTensor>(getParam<MaterialPropertyName>("flux_total_name"))),
+    _flux_transpose(
+        declareProperty<RankTwoTensor>(getParam<MaterialPropertyName>("flux_transpose_name")))
+
+
 {
 }
 
@@ -52,6 +64,11 @@ FluxBasedStrainIncrement::computeQpProperties()
 
   _strain_increment[_qp] = -0.5 * (_flux_grad_tensor + _flux_grad_tensor.transpose());
   _strain_increment[_qp] *= _dt;
+  //Storing the tensor value
+  _flux_tensor[_qp] = _flux_grad_tensor;
+  _flux_total[_qp] = 0.5 * (_flux_grad_tensor + _flux_grad_tensor.transpose());
+  _flux_transpose[_qp] = 0.5 * _flux_grad_tensor.transpose();
+
 }
 
 void

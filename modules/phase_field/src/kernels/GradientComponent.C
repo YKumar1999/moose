@@ -20,6 +20,8 @@ GradientComponent::validParams()
   params.addRequiredCoupledVar("v", "Coupled variable to match gradient component of");
   params.addRequiredParam<unsigned int>("component",
                                         "Component of the gradient of the coupled variable v");
+  params.addRequiredParam<MaterialPropertyName>("diffusivity_name",
+                                        "Diffusivity of the species"); //Added the diffusivity term
   return params;
 }
 
@@ -27,7 +29,8 @@ GradientComponent::GradientComponent(const InputParameters & parameters)
   : Kernel(parameters),
     _v_var(coupled("v")),
     _grad_v(coupledGradient("v")),
-    _component(getParam<unsigned int>("component"))
+    _component(getParam<unsigned int>("component")),
+    _diffusion_coef(getMaterialProperty<Real>("diffusivity_name"))
 {
   if (_component >= LIBMESH_DIM)
     paramError("component", "Component too large for LIBMESH_DIM");
@@ -36,8 +39,8 @@ GradientComponent::GradientComponent(const InputParameters & parameters)
 Real
 GradientComponent::computeQpResidual()
 {
-  return (_u[_qp] - _grad_v[_qp](_component)) * _test[_i][_qp];
-}
+  return (_u[_qp] + (_diffusion_coef)[_qp] * _grad_v[_qp](_component)) * _test[_i][_qp]; //J + D*gradU = 0
+} 
 
 Real
 GradientComponent::computeQpJacobian()
@@ -49,6 +52,6 @@ Real
 GradientComponent::computeQpOffDiagJacobian(unsigned int jvar)
 {
   if (jvar == _v_var)
-    return -_grad_phi[_j][_qp](_component) * _test[_i][_qp];
+  return (_diffusion_coef)[_qp] * _grad_phi[_j][_qp](_component) * _test[_i][_qp]; // + _grad_phi instead of negative
   return 0.0;
 }

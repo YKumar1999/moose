@@ -10,6 +10,7 @@
 #pragma once
 
 #include "Kernel.h"
+#include "DerivativeMaterialInterface.h"
 
 class GradientComponent : public Kernel
 {
@@ -31,4 +32,7 @@ protected:
 
   /// Component of the gradient vector to match
   const unsigned int _component;
+
+  /// Holds the diffusivity from the material system if non-AD
+  const MaterialProperty<Real> & _diffusion_coef;
 };
