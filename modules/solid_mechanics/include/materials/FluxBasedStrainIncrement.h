@@ -39,7 +39,12 @@ protected:
   const VariableValue & _gb;
 
   MaterialProperty<RankTwoTensor> & _strain_increment;
+  MaterialProperty<Real> & _flux_trace;
+  MaterialProperty<RankTwoTensor> & _flux_tensor;
+  MaterialProperty<RankTwoTensor> & _flux_shear;
+  MaterialProperty<RankTwoTensor> & _flux_total;
+  MaterialProperty<RankTwoTensor> & _flux_volum;
+  MaterialProperty<RankTwoTensor> & _flux_transpose;
 
   RankTwoTensor _flux_grad_tensor;
-  RankTwoTensor iden;
 };
