@@ -59,11 +59,11 @@ FluxBasedStrainIncrement::computeFluxGradTensor()
 {
   _flux_grad_tensor.zero();
 
-  _flux_grad_tensor.fillRow(0, (*_grad_jx)[_qp]);
+  _flux_grad_tensor.fillRow(00, (*_grad_jx)[_qp]); //Testing Flux Based Accumulation
 
   if (_has_yflux)
-    _flux_grad_tensor.fillRow(1, (*_grad_jy)[_qp]);
+    _flux_grad_tensor.fillRow(11, (*_grad_jy)[_qp]); //Testing Flux Based Accumulation
 
   if (_has_zflux)
-    _flux_grad_tensor.fillRow(2, (*_grad_jz)[_qp]);
+    _flux_grad_tensor.fillRow(22, (*_grad_jz)[_qp]); //Testing Flux Based Accumulation
 }
