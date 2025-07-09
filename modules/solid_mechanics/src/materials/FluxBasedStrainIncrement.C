@@ -50,7 +50,7 @@ FluxBasedStrainIncrement::computeQpProperties()
 {
   computeFluxGradTensor();
 
-  _strain_increment[_qp] = -0.5 * (_flux_grad_tensor + _flux_grad_tensor.transpose());
+  _strain_increment[_qp] = -0.5 * (_flux_grad_tensor + _flux_grad_tensor.transpose()) + (1/2) * _flux_grad_tensor.trace() * iden;
   _strain_increment[_qp] *= _dt;
 }
 
@@ -59,11 +59,12 @@ FluxBasedStrainIncrement::computeFluxGradTensor()
 {
   _flux_grad_tensor.zero();
 
-  _flux_grad_tensor.fillRow(0, (*_grad_jx)[_qp]);
+  // Testing flux based accumulation
+  _flux_grad_tensor.fillRow(00, (*_grad_jx)[_qp]); //Filling only 00 component of flux gradient 
 
   if (_has_yflux)
-    _flux_grad_tensor.fillRow(1, (*_grad_jy)[_qp]);
+    _flux_grad_tensor.fillRow(11, (*_grad_jy)[_qp]); //Filling only 11 component of flux gradient
 
   if (_has_zflux)
-    _flux_grad_tensor.fillRow(2, (*_grad_jz)[_qp]);
+    _flux_grad_tensor.fillRow(22, (*_grad_jz)[_qp]); //Filling only 22 component of flux gradient
 }

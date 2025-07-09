@@ -41,4 +41,5 @@ protected:
   MaterialProperty<RankTwoTensor> & _strain_increment;
 
   RankTwoTensor _flux_grad_tensor;
+  RankTwoTensor iden;
 };
