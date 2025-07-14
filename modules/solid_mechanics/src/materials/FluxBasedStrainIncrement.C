@@ -67,6 +67,7 @@ FluxBasedStrainIncrement::computeQpProperties()
   //Storing the tensor value
   _flux_tensor[_qp] = _flux_grad_tensor;
   _flux_total[_qp] = 0.5 * (_flux_grad_tensor + _flux_grad_tensor.transpose());
+  _flux_transpose[_qp] = 0.5 * _flux_grad_tensor.transpose();
 
 }
 
