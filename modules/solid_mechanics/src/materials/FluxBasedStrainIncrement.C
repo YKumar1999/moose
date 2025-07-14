@@ -67,7 +67,6 @@ FluxBasedStrainIncrement::computeQpProperties()
   //Storing the tensor value
   _flux_tensor[_qp] = _flux_grad_tensor;
   _flux_total[_qp] = 0.5 * (_flux_grad_tensor + _flux_grad_tensor.transpose());
-  _flux_transpose[_qp] = 0.5 * _flux_grad_tensor.transpose();
 
 }
 
@@ -79,16 +78,20 @@ FluxBasedStrainIncrement::computeFluxGradTensor()
   // _flux_grad_tensor.fillRow(00, (*_grad_jx)[_qp]); //Testing Flux Based Accumulation  
 
   if (_has_yflux)
+  {
     // _flux_grad_tensor.fillRow(11, (*_grad_jy)[_qp]); //Testing Flux Based Accumulation
     _flux_grad_tensor(0,1) = (*_grad_jx)[_qp](1);
 
     _flux_grad_tensor(1,0) = (*_grad_jy)[_qp](0);
+  }
 
   if (_has_zflux)
+  {
     _flux_grad_tensor(0,2) = (*_grad_jx)[_qp](2);
     _flux_grad_tensor(1,2) = (*_grad_jy)[_qp](2);
 
     _flux_grad_tensor(2,0) = (*_grad_jz)[_qp](0);
     _flux_grad_tensor(2,1) = (*_grad_jz)[_qp](1);
     // _flux_grad_tensor.fillRow(22, (*_grad_jz)[_qp]); //Testing Flux Based Accumulation
+  }
 }
