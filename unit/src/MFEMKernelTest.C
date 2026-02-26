@@ -1,4 +1,13 @@
-#ifdef MFEM_ENABLED
+//* This file is part of the MOOSE framework
+//* https://mooseframework.inl.gov
+//*
+//* All rights reserved, see COPYRIGHT for full restrictions
+//* https://github.com/idaholab/moose/blob/master/COPYRIGHT
+//*
+//* Licensed under LGPL 2.1, please see LICENSE for details
+//* https://www.gnu.org/licenses/lgpl-2.1.html
+
+#ifdef MOOSE_MFEM_ENABLED
 
 #include "MFEMObjectUnitTest.h"
 #include "MFEMCurlCurlKernel.h"
@@ -15,7 +24,15 @@
 class MFEMKernelTest : public MFEMObjectUnitTest
 {
 public:
-  MFEMKernelTest() : MFEMObjectUnitTest("MooseUnitApp") {}
+  MFEMKernelTest() : MFEMObjectUnitTest("MooseUnitApp")
+  {
+    // Register a dummy (Par)GridFunction for kernels to apply to
+    auto pm = _mfem_mesh_ptr->getMFEMParMeshPtr().get();
+    mfem::common::H1_FESpace fe(pm, 1);
+    mfem::GridFunction gf(&fe);
+    auto pgf = std::make_shared<mfem::ParGridFunction>(pm, &gf);
+    _mfem_problem->getProblemData().gridfunctions.Register("test_variable_name", pgf);
+  }
 };
 
 /**
@@ -49,7 +66,7 @@ TEST_F(MFEMKernelTest, MFEMDiffusionKernel)
   MFEMDiffusionKernel & kernel =
       addObject<MFEMDiffusionKernel>("MFEMDiffusionKernel", "kernel1", kernel_params);
   // Test MFEMKernel marker array has been constructed as expected
-  ASSERT_EQ(kernel.getSubdomains(), mfem::Array<int>({0, 1}));
+  ASSERT_EQ(kernel.getSubdomainMarkers(), mfem::Array<int>({0, 1}));
   // Test MFEMKernel returns an integrator of the expected type
   auto integrator = dynamic_cast<mfem::DiffusionIntegrator *>(kernel.createBFIntegrator());
   ASSERT_NE(integrator, nullptr);

@@ -67,6 +67,8 @@ The subchannel module SCM (formely known as Pronghorn-SC) results, were improved
 
 ## Steady State Results
 
+!! Intentional comment to provide extra spacing
+
 Three simulation results are compared against the experimental measurements of thermocouples at the outlet of the heated section (TTC):
 
 - item Results from the [DASSH](https://github.com/dassh-dev/examples/tree/master/Example-3) [!cite](atz2021ducted),subchannel code, which is used as a reference for subchannel agreement,
@@ -91,6 +93,8 @@ For SHRT-17, in the uniform pin power case, both SCM and DASSH exhibit similar b
 
 ## Transient Results
 
+!! Intentional comment to provide extra spacing
+
 Simulations with uniform power profile are performed with the SCM model. Results are compared against experimental measurements and the NETFLOW++/COBRA simulations are used as a reference result. The temperature transient calculations, together with the experimental measurements at thermocouple location TTC-31, are presented in [fig:transient1],[fig:transient2]. In SHRT-17, the power of the XX09 sub-assembly decreases rapidly at time zero due to the reactor scram, which results in a sudden coolant temperature decrease. On the other hand, in SHRT-45R there is no scram of the reactor, so power decreases at a much lower pace. This is why no sudden temperature drop is observed at time zero.
 
 Then for both tests, the flow rate gradually decreases due to the pump trip and coasts-down, causing the coolant temperature to increase to a peak of around $892\mathrm{K}$ for SHRT-17 and $976\mathrm{K}$ for SHRT-45R. Following that, the coolant temperature decreases and levels off to $700\mathrm{K}$ for SHRT-17 and $730\mathrm{K}$ for SHRT-45R with the establishment of natural circulation due to decay heat and buoyancy effects.
@@ -107,30 +111,31 @@ For both SHRT-17 and SHRT-45R, the stand-alone SCM calculated transient, underes
     id=fig:transient2
     caption=Test SHRT-45R
 
-
 ## Input files
+
+!! Intentional comment to provide extra spacing
 
 To run the steady state problems use the following input files:
 
-!listing /validation/EBR-II/XX09_SCM_SS17.i language=cpp
-!listing /validation/EBR-II/XX09_SCM_SS45R.i language=cpp
+!listing /validation/EBR-II/XX09_SCM_SS17.i language=moose
+!listing /validation/EBR-II/XX09_SCM_SS45R.i language=moose
 
 To run the transient problems use the following input files:
 
-!listing /validation/EBR-II/XX09_SCM_TR17.i language=cpp
-!listing /validation/EBR-II/XX09_SCM_TR45R.i language=cpp
+!listing /validation/EBR-II/XX09_SCM_TR17.i language=moose
+!listing /validation/EBR-II/XX09_SCM_TR45R.i language=moose
 
 The corrected power profile is read by the following .txt file (pin_power_profile61.txt):
 
-!listing /validation/EBR-II/pin_power_profile61.txt language=cpp
+!listing /validation/EBR-II/pin_power_profile61.txt language=moose
 
 The uniform power profile is read by the following .txt file (pin_power_profile61_uniform.txt):
 
-!listing /validation/EBR-II/pin_power_profile61_uniform.txt language=cpp
+!listing /validation/EBR-II/pin_power_profile61_uniform.txt language=moose
 
 The Functions block defines the shape of the axial power profile:
 
-!listing /validation/EBR-II/XX09_SCM_SS17.i block=Functions language=cpp
+!listing /validation/EBR-II/XX09_SCM_SS17.i block=Functions language=moose
 
 ### Transient BC's
 
@@ -153,13 +158,10 @@ For the transient case the user needs to provide transient boundary conditions:
 
 - Then, define the transient evolution of the boundary conditions in the Functions block based on .csv files:
 
-!listing /validation/EBR-II/XX09_SCM_TR17.i block=Functions language=cpp
+!listing /validation/EBR-II/XX09_SCM_TR17.i block=Functions language=moose
 
 - The functions defined above are given normalized and they multiply the initial steady state conditions:
 
-!listing /validation/EBR-II/XX09_SCM_TR17.i block=Controls language=cpp
+!listing /validation/EBR-II/XX09_SCM_TR17.i block=Controls language=moose
 
-!listing /validation/EBR-II/XX09_SCM_TR17.i block=AuxKernels language=cpp
-
-
-
+!listing /validation/EBR-II/XX09_SCM_TR17.i block=AuxKernels language=moose

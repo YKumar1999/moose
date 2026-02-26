@@ -55,21 +55,14 @@ ParsedGenerateSideset::ParsedGenerateSideset(const InputParameters & parameters)
 {
   _boundary_names.push_back(getParam<BoundaryName>("new_sideset_name"));
 
-  // base function object
+  // Create parsed function
   _func_F = std::make_shared<SymFunction>();
-
-  // set FParser internal feature flags
-  setParserFeatureFlags(_func_F);
-
-  // add the constant expressions
-  addFParserConstants(_func_F,
+  parsedFunctionSetup(_func_F,
+                      _function,
+                      "x,y,z",
                       getParam<std::vector<std::string>>("constant_names"),
-                      getParam<std::vector<std::string>>("constant_expressions"));
-
-  // parse function
-  if (_func_F->Parse(_function, "x,y,z") >= 0)
-    paramError(
-        "combinatorial_geometry", "Invalid function\n", _function, "\n", _func_F->ErrorMsg());
+                      getParam<std::vector<std::string>>("constant_expressions"),
+                      comm());
 
   _func_params.resize(3);
 }
@@ -124,6 +117,6 @@ ParsedGenerateSideset::generate()
   finalize();
   boundary_info.sideset_name(boundary_ids[0]) = _boundary_names[0];
 
-  mesh->set_isnt_prepared();
+  mesh->unset_is_prepared();
   return dynamic_pointer_cast<MeshBase>(mesh);
 }

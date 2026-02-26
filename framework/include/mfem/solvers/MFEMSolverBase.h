@@ -7,14 +7,12 @@
 //* Licensed under LGPL 2.1, please see LICENSE for details
 //* https://www.gnu.org/licenses/lgpl-2.1.html
 
-#ifdef MFEM_ENABLED
+#ifdef MOOSE_MFEM_ENABLED
 
 #pragma once
+
 #include "MFEMGeneralUserObject.h"
-#include "libmesh/ignore_warnings.h"
-#include <mfem.hpp>
-#include "libmesh/restore_warnings.h"
-#include <memory>
+#include "MFEMHyprePatch.h"
 
 /**
  * Base class for wrapping mfem::Solver-derived classes.
@@ -44,11 +42,16 @@ protected:
   /// Override in derived classes to construct and set the solver options.
   virtual void constructSolver(const InputParameters & parameters) = 0;
 
-  // Variable defining whether to use LOR solver
+  /// Checks for the correct configuration of quadrature bases for LOR spectral equivalence
+  virtual void checkSpectralEquivalence(mfem::ParBilinearForm & blf) const;
+
+  /// Variable defining whether to use LOR solver
   bool _lor;
 
-  // Solver and preconditioner to be used for the problem
+  /// Solver to be used for the problem
   std::unique_ptr<mfem::Solver> _solver;
+
+  /// Preconditioner to be used for the problem
   MFEMSolverBase * _preconditioner;
 };
 

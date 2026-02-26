@@ -23,6 +23,7 @@
     type = MFEMScalarFESpace
     fec_type = L2
     fec_order = CONSTANT
+    basis = GaussLegendre
   []
 []
 
@@ -83,12 +84,10 @@
   [divdiv]
     type = MFEMDivDivKernel
     variable = F
-    coefficient = 1.0
   []
   [mass]
     type = MFEMVectorFEMassKernel
     variable = F
-    coefficient = 1.0
   []
   [source]
     type = MFEMVectorFEDomainLFKernel

@@ -15,9 +15,20 @@
 #include "MooseUtils.h"
 #include "MooseTypes.h"
 #include "FaceInfo.h"
+#include "MeshGenerator.h"
 
 namespace MooseMeshUtils
 {
+
+// Used to temporarily store information about which lower-dimensional
+// sides to add and what subdomain id to use for the added sides.
+struct ElemSidePair
+{
+  ElemSidePair(Elem * elem_in, unsigned short int side_in) : elem(elem_in), side(side_in) {}
+
+  Elem * elem;
+  unsigned short int side;
+};
 
 /**
  * Merges the boundary IDs of boundaries that have the same names
@@ -416,4 +427,84 @@ void extraElemIntegerSwapParametersProcessor(
  */
 std::unique_ptr<ReplicatedMesh> buildBoundaryMesh(const ReplicatedMesh & input_mesh,
                                                   const boundary_id_type boundary_id);
+
+/**
+ * Create a new subdomain by generating new side elements from a list of sidesets in a given mesh.
+ * @param mesh The mesh to work on
+ * @param boundary_names The names of the sidesets to be used to create the new subdomain
+ * @param new_subdomain_id The ID of the new subdomain to be created based on the sidesets
+ * @param new_subdomain_name The name of the new subdomain to be created based on the sidesets
+ * @param type_name The type of the mesh generator that is calling this method, used for error
+ *                  messages and debugging purposes.
+ */
+void createSubdomainFromSidesets(std::unique_ptr<MeshBase> & mesh,
+                                 std::vector<BoundaryName> boundary_names,
+                                 const SubdomainID new_subdomain_id,
+                                 const SubdomainName new_subdomain_name,
+                                 const std::string type_name);
+
+/**
+ * Convert a list of blocks in a given mesh to a standalone new mesh.
+ * @param source_mesh The source mesh from which the blocks will be converted
+ * @param target_mesh The target mesh to which the blocks will be converted
+ * @param target_blocks The names of the blocks to be converted to the target mesh
+ */
+void convertBlockToMesh(std::unique_ptr<MeshBase> & source_mesh,
+                        std::unique_ptr<MeshBase> & target_mesh,
+                        const std::vector<SubdomainName> & target_blocks);
+
+/**
+ * Helper function for copying one mesh into another
+ * @param mg The mesh generator calling this function
+ * @param destination The mesh to copy into
+ * @param source The mesh to copy from
+ * @param avoid_merging_subdomains If true, subdomain IDs in the source mesh will
+ * be offset to avoid merging with subdomain IDs in the destination mesh
+ * @param avoid_merging_boundaries If true, boundary IDs in the source mesh will
+ * be offset to avoid merging with boundary IDs in the destination mesh
+ * @param communicator The communicator for parallel operations
+ */
+void copyIntoMesh(MeshGenerator & mg,
+                  UnstructuredMesh & destination,
+                  const UnstructuredMesh & source,
+                  const bool avoid_merging_subdomains,
+                  const bool avoid_merging_boundaries,
+                  const Parallel::Communicator & communicator);
+
+/**
+ * Generates meshes from edges connecting a list of points.
+ * @param mesh The mesh to be built
+ * @param points The list of points defining the polyline
+ * @param loop Whether the polyline is a closed loop
+ * @param start_boundary The boundary name to assign to the start of the polyline (if
+ * not a loop)
+ * @param end_boundary The boundary name to assign to the end of the polyline (if
+ * not a loop)
+ * @param nums_edges_between_points The numbers of edges to create between each pair of points
+ *  (if only one number is given, it is used for all point pairs)
+ */
+void buildPolyLineMesh(MeshBase & mesh,
+                       const std::vector<Point> & points,
+                       const bool loop,
+                       const BoundaryName & start_boundary,
+                       const BoundaryName & end_boundary,
+                       const std::vector<unsigned int> & nums_edges_between_points);
+
+/**
+ * Generates meshes from edges connecting a list of points.
+ * @param mesh The mesh to be built
+ * @param points The list of points defining the polyline
+ * @param loop Whether the polyline is a closed loop
+ * @param start_boundary The boundary name to assign to the start of the polyline (if
+ * not a loop)
+ * @param end_boundary The boundary name to assign to the end of the polyline (if
+ * not a loop)
+ * @param max_elem_size The maximum element size for the mesh
+ */
+void buildPolyLineMesh(MeshBase & mesh,
+                       const std::vector<Point> & points,
+                       const bool loop,
+                       const BoundaryName & start_boundary,
+                       const BoundaryName & end_boundary,
+                       const Real max_elem_size);
 }

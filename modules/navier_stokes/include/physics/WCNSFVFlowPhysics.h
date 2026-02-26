@@ -24,8 +24,6 @@ public:
 
   /// Get the name of the linear friction coefficient. Returns an empty string if no friction.
   virtual MooseFunctorName getLinearFrictionCoefName() const override;
-  /// Return the name of the Rhie Chow user object
-  UserObjectName rhieChowUOName() const override;
   /// Return the number of algebraic ghosting layers needed
   unsigned short getNumberAlgebraicGhostingLayersNeeded() const override;
 
@@ -54,7 +52,7 @@ private:
   void addMomentumPressureKernels() override;
   void addMomentumGravityKernels() override;
   void addMomentumBoussinesqKernels() override;
-  void addMomentumFrictionKernels();
+  void addMomentumFrictionKernels() override;
 
   /// Functions adding boundary conditions for the incompressible simulation.
   /// These are used for weakly-compressible simulations as well.
@@ -75,13 +73,9 @@ private:
   /// The number of smoothing layers if that treatment is used on porosity
   const unsigned _porosity_smoothing_layers;
 
-  /// Subdomains where we want to have volumetric friction
-  std::vector<std::vector<SubdomainName>> _friction_blocks;
-  /// The friction correlation types used for each block
-  std::vector<std::vector<std::string>> _friction_types;
-  /// The coefficients used for each item if friction type
-  std::vector<std::vector<std::string>> _friction_coeffs;
-
   /// Name of the user object in charge of computing the Rhie Chow coefficients
   UserObjectName _rc_uo_name;
+
+  void addAxisymmetricViscousSourceKernel(const std::vector<SubdomainName> & rz_blocks,
+                                          unsigned int radial_index) override;
 };

@@ -2,6 +2,8 @@
 
 ## Benchmark Description
 
+!! Intentional comment to provide extra spacing
+
 The PNNL 2$\times$6 benchmark [!cite](BATES1980) was performed at Pacific Northwest National Laboratory in 1977 for investigating the buoyancy effect in the mixed (combined free and forced) convection regime for specific flow coast-down transients. The objective of the study was to develop an understanding of the thermal hydraulic phenomena at low flows in a pin bundle subjected to lateral power skews. The study was performed using a non-uniformly electrically heated 2x6 pin bundle contained in a flow housing.
 
 Local fluid velocity and temperature measurements in the mixed (combined free and forced) convection regime were obtained. This benchmark aims to validate the SCM code in natural convection conditions. For each of the  test conditions of this study, fluid axial velocity and temperature (both local and bulk average inlet and outlet) were measured within the heated length of the pin bundle.  For the steady state cases studied, velocity measurements were made along the X axis at Y = 0.0 which is along the centerline of the central subchannels (subchannels 1-7). The cross section of the pin bundle is presented in Figure [2x6].
@@ -27,11 +29,11 @@ Velocity data were recorded at selected points along the central subchannel axia
 
 The input file for the steady case 9 is:
 
-!listing /validation/PNNL_12_pin/steady_state/2X6_ss.i language=cpp
+!listing /validation/PNNL_12_pin/steady_state/2X6_ss.i language=moose
 
 The input file decribing the radial pin power profile is:
 
-!listing /validation/PNNL_12_pin/steady_state/power_profile.txt language=cpp
+!listing /validation/PNNL_12_pin/steady_state/power_profile.txt language=moose
 
 For case 13 the input file and power profile file, need to be adapted according to the respective operational parameters.
 
@@ -39,9 +41,11 @@ For case 13 the input file and power profile file, need to be adapted according 
 
 The input file for the steady case 5 is:
 
-!listing /validation/PNNL_12_pin/transient/2X6_transient.i language=cpp
+!listing /validation/PNNL_12_pin/transient/2X6_transient.i language=moose
 
 ## Results
+
+!! Intentional comment to provide extra spacing
 
 The SCM results vs the experimental measurements are shown in Figures [buoyancy9], [buoyancy13] and [coast_down].
 

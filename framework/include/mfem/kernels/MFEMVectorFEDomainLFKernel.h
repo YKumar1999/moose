@@ -7,14 +7,17 @@
 //* Licensed under LGPL 2.1, please see LICENSE for details
 //* https://www.gnu.org/licenses/lgpl-2.1.html
 
-#ifdef MFEM_ENABLED
+#ifdef MOOSE_MFEM_ENABLED
 
 #pragma once
+
 #include "MFEMKernel.h"
 
-/*
-(\\vec f, \\vec u')
-*/
+/**
+ * \f[
+ * (\vec f, \vec v)
+ * \f]
+ */
 class MFEMVectorFEDomainLFKernel : public MFEMKernel
 {
 public:
@@ -25,7 +28,6 @@ public:
   virtual mfem::LinearFormIntegrator * createLFIntegrator() override;
 
 protected:
-  const MFEMVectorCoefficientName & _vec_coef_name;
   mfem::VectorCoefficient & _vec_coef;
 };
 

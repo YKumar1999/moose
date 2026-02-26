@@ -22,40 +22,13 @@ P_out = 1.0e5 # Pa
   []
 []
 
-[AuxVariables]
-  [mdot]
-  []
-  [SumWij]
-  []
-  [P]
-  []
-  [DP]
-  []
-  [h]
-  []
-  [T]
-  []
-  [rho]
-  []
-  [S]
-  []
-  [w_perim]
-  []
-  [q_prime]
-  []
-  [mu]
-  []
-  [displacement]
-  []
-[]
-
 [FluidProperties]
   [LEAD]
     type = LeadFluidProperties
   []
 []
 
-[Problem]
+[SubChannel]
   type = TriSubChannel1PhaseProblem
   fp = LEAD
   n_blocks = 1
@@ -69,9 +42,18 @@ P_out = 1.0e5 # Pa
   implicit = true
   segregated = false
   staggered_pressure = false
-  monolithic_thermal = false
   verbose_multiapps = true
-  verbose_subchannel = false
+  verbose_subchannel = true
+  interpolation_scheme = upwind
+
+  # friction model
+  friction_closure = 'cheng'
+[]
+
+[SCMClosures]
+  [cheng]
+    type = SCMFrictionUpdatedChengTodreas
+  []
 []
 
 [ICs]
@@ -160,7 +142,82 @@ P_out = 1.0e5 # Pa
 []
 
 [Outputs]
-  exodus = true
+  csv = true
+[]
+
+[Postprocessors]
+  [T1]
+    type = SubChannelPointValue
+    variable = T
+    index = 37
+    execute_on = "timestep_end"
+    height = 0.87
+  []
+  [T2]
+    type = SubChannelPointValue
+    variable = T
+    index = 36
+    execute_on = "timestep_end"
+    height = 0.87
+  []
+  [T3]
+    type = SubChannelPointValue
+    variable = T
+    index = 20
+    execute_on = "timestep_end"
+    height = 0.87
+  []
+  [T4]
+    type = SubChannelPointValue
+    variable = T
+    index = 10
+    execute_on = "timestep_end"
+    height = 0.87
+  []
+  [T5]
+    type = SubChannelPointValue
+    variable = T
+    index = 4
+    execute_on = "timestep_end"
+    height = 0.87
+  []
+  [T6]
+    type = SubChannelPointValue
+    variable = T
+    index = 1
+    execute_on = "timestep_end"
+    height = 0.87
+  []
+  [T7]
+    type = SubChannelPointValue
+    variable = T
+    index = 14
+    execute_on = "timestep_end"
+    height = 0.87
+  []
+  [T8]
+    type = SubChannelPointValue
+    variable = T
+    index = 28
+    execute_on = "timestep_end"
+    height = 0.87
+  []
+  ####### Assembly pressure drop
+  [DP_SubchannelDelta]
+    type = SubChannelDelta
+    variable = P
+    execute_on = 'TIMESTEP_END'
+  []
+  #####
+  [Mean_Temp]
+    type = SCMPlanarMean
+    variable = T
+    height = 2
+  []
+  [Total_power]
+    type = ElementIntegralVariablePostprocessor
+    variable = q_prime
+  []
 []
 
 [Executioner]
@@ -176,6 +233,7 @@ P_out = 1.0e5 # Pa
 #     type = FullSolveMultiApp
 #     input_files = "3d_LBE_19.i"
 #     execute_on = "timestep_end"
+#     max_procs_per_app = 1
 #   []
 # []
 

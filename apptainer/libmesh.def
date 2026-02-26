@@ -42,6 +42,9 @@ Fingerprints: 0CFFCAB55E806363601C442D211817B01E0911DB
     fi
 
 %post
+    # So that piping things to tee fails
+    set -o pipefail
+
     # Load jinja vars
     ROOT_BUILD_DIR={{ ROOT_BUILD_DIR }}
     LIBMESH_DIR={{ LIBMESH_DIR }}
@@ -53,6 +56,11 @@ Fingerprints: 0CFFCAB55E806363601C442D211817B01E0911DB
     VTK_SHA256={{ vtk_sha256 }}
     VTKINCLUDE_DIR={{ VTK_DIR }}/include/vtk-{{ vtk_vtk_friendly_version }}
     VTKLIB_DIR={{ VTK_DIR }}/lib
+
+    # Expose the compat cuda libraries that can be linked to for building without a GPU present
+    if [ -n "$CUDA_DIR" ]; then
+        export LD_LIBRARY_PATH=${CUDA_DIR}/compat:${LD_LIBRARY_PATH}
+    fi
 
     # Don't build VTK for clang 16; 9.2.6 currently doesn't build for clang 16.
     # VTK 9.3 does build for clang 16, but it diffs horribly due to a few bugs
@@ -101,8 +109,14 @@ Fingerprints: 0CFFCAB55E806363601C442D211817B01E0911DB
     cd ${ROOT_BUILD_DIR}
     mkdir -p ${LIBMESH_DIR}/logs
     METHODS="{{ METHODS or "opt dbg oprof devel" }}"
+    IFS=' ' read -r -a LIBMESH_ARR_OPTIONS <<< "{{ LIBMESH_OPTIONS }}"
+    if [ -n "$CUDA_DIR" ]; then
+        LIBMESH_ARR_OPTIONS+=("--with-nvtx=${CUDA_DIR}" "--enable-perflog")
+    fi
+
     LIBMESH_SRC_DIR=${LIBMESH_SRC_DIR} LIBMESH_DIR=${LIBMESH_DIR} MOOSE_JOBS=${MOOSE_JOBS} METHODS=${METHODS} ./scripts/{{ LIBMESH_BUILD_SCRIPT }} \
-        {{ LIBMESH_OPTIONS }} --skip-submodule-update 2>&1 | tee ${LIBMESH_DIR}/logs/build.log
+        "${LIBMESH_ARR_OPTIONS[@]}" --skip-submodule-update 2>&1 | tee ${LIBMESH_DIR}/logs/build.log
+    cp ${LIBMESH_SRC_DIR}/build/config.log ${LIBMESH_DIR}/logs/
 
     # Fix possibly bad permissions
     chmod -R o=u-w,g=u-w ${LIBMESH_DIR}

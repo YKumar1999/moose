@@ -7,7 +7,7 @@
 //* Licensed under LGPL 2.1, please see LICENSE for details
 //* https://www.gnu.org/licenses/lgpl-2.1.html
 
-#ifdef MFEM_ENABLED
+#ifdef MOOSE_MFEM_ENABLED
 
 #include "MFEMSolverBase.h"
 
@@ -56,5 +56,33 @@ template void MFEMSolverBase::setPreconditioner(mfem::GMRESSolver &);
 template void MFEMSolverBase::setPreconditioner(mfem::HypreFGMRES &);
 template void MFEMSolverBase::setPreconditioner(mfem::HypreGMRES &);
 template void MFEMSolverBase::setPreconditioner(mfem::HyprePCG &);
+
+template void MFEMSolverBase::setPreconditioner(mfem::patched::HypreGMRES &);
+template void MFEMSolverBase::setPreconditioner(mfem::patched::HyprePCG &);
+
+void
+MFEMSolverBase::checkSpectralEquivalence(mfem::ParBilinearForm & blf) const
+{
+  if (auto fec = dynamic_cast<const mfem::H1_FECollection *>(blf.FESpace()->FEColl()))
+  {
+    if (fec->GetBasisType() != mfem::BasisType::GaussLobatto)
+      mooseError("Low-Order-Refined solver requires the FESpace basis to be GaussLobatto "
+                 "for H1 elements.");
+  }
+  else if (auto fec = dynamic_cast<const mfem::ND_FECollection *>(blf.FESpace()->FEColl()))
+  {
+    if (fec->GetClosedBasisType() != mfem::BasisType::GaussLobatto ||
+        fec->GetOpenBasisType() != mfem::BasisType::IntegratedGLL)
+      mooseError("Low-Order-Refined solver requires the FESpace closed-basis to be GaussLobatto "
+                 "and the open-basis to be IntegratedGLL for ND elements.");
+  }
+  else if (auto fec = dynamic_cast<const mfem::RT_FECollection *>(blf.FESpace()->FEColl()))
+  {
+    if (fec->GetClosedBasisType() != mfem::BasisType::GaussLobatto ||
+        fec->GetOpenBasisType() != mfem::BasisType::IntegratedGLL)
+      mooseError("Low-Order-Refined solver requires the FESpace closed-basis to be GaussLobatto "
+                 "and the open-basis to be IntegratedGLL for RT elements.");
+  }
+}
 
 #endif

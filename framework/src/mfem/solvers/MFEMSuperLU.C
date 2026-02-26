@@ -7,7 +7,7 @@
 //* Licensed under LGPL 2.1, please see LICENSE for details
 //* https://www.gnu.org/licenses/lgpl-2.1.html
 
-#ifdef MFEM_ENABLED
+#ifdef MOOSE_MFEM_ENABLED
 
 #include "MFEMSuperLU.h"
 #include "MFEMProblem.h"
@@ -32,8 +32,7 @@ MFEMSuperLU::MFEMSuperLU(const InputParameters & parameters) : MFEMSolverBase(pa
 void
 MFEMSuperLU::constructSolver(const InputParameters &)
 {
-  _solver = std::make_unique<Moose::MFEM::SuperLUSolver>(
-      getMFEMProblem().mesh().getMFEMParMesh().GetComm());
+  _solver = std::make_unique<Moose::MFEM::SuperLUSolver>(getMFEMProblem().getComm());
 }
 
 void

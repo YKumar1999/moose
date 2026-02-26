@@ -7,7 +7,7 @@
 //* Licensed under LGPL 2.1, please see LICENSE for details
 //* https://www.gnu.org/licenses/lgpl-2.1.html
 
-#ifdef MFEM_ENABLED
+#ifdef MOOSE_MFEM_ENABLED
 
 #include "MFEMDomainSubMesh.h"
 #include "MFEMProblem.h"
@@ -18,27 +18,31 @@ InputParameters
 MFEMDomainSubMesh::validParams()
 {
   InputParameters params = MFEMSubMesh::validParams();
+  params += MFEMBlockRestrictable::validParams();
   params.addClassDescription("Class to construct an MFEMSubMesh formed from the subspace of the "
                              "parent mesh restricted to the set of user-specified subdomains.");
-  params.addRequiredParam<std::vector<SubdomainName>>(
-      "block", "The list of subdomain blocks ids comprising this SubMesh");
+  params.addParam<BoundaryName>("submesh_boundary", "Name to assign submesh boundary.");
   return params;
 }
 
 MFEMDomainSubMesh::MFEMDomainSubMesh(const InputParameters & parameters)
   : MFEMSubMesh(parameters),
-    _subdomain_names(getParam<std::vector<SubdomainName>>("block")),
-    _subdomain_attributes(_subdomain_names.size())
+    MFEMBlockRestrictable(parameters, getMFEMProblem().mesh().getMFEMParMesh())
 {
-  for (const auto i : index_range(_subdomain_names))
-    _subdomain_attributes[i] = std::stoi(_subdomain_names[i]);
 }
 
 void
 MFEMDomainSubMesh::buildSubMesh()
 {
-  _submesh = std::make_shared<mfem::ParSubMesh>(mfem::ParSubMesh::CreateFromDomain(
-      getMFEMProblem().mesh().getMFEMParMesh(), getSubdomains()));
+  _submesh = std::make_shared<mfem::ParSubMesh>(
+      mfem::ParSubMesh::CreateFromDomain(getMesh(), getSubdomainAttributes()));
+  _submesh->attribute_sets.attr_sets = getMesh().attribute_sets.attr_sets;
+  _submesh->bdr_attribute_sets.attr_sets = getMesh().bdr_attribute_sets.attr_sets;
+
+  if (isParamSetByUser("submesh_boundary"))
+    _submesh->bdr_attribute_sets.SetAttributeSet(
+        getParam<BoundaryName>("submesh_boundary"),
+        mfem::Array<int>({getMesh().bdr_attributes.Max() + 1}));
 }
 
 #endif

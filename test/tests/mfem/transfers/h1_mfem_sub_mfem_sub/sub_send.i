@@ -1,7 +1,6 @@
 [Mesh]
   type = MFEMMesh
   file = ../../mesh/square.msh
-  dim = 3
 []
 
 [Problem]
@@ -24,17 +23,16 @@
 []
 
 [BCs]
+  [back]
+    type = MFEMScalarDirichletBC
+    variable = send
+    boundary = 1
+    coefficient = 1.0
+  []
   [bottom]
     type = MFEMScalarDirichletBC
     variable = send
-    boundary = '1'
-    coefficient = 1.0
-  []
-  [low_terminal]
-    type = MFEMScalarDirichletBC
-    variable = send
-    boundary = '2'
-    coefficient = 0.0
+    boundary = 2
   []
 []
 
@@ -42,7 +40,6 @@
   [diff]
     type = MFEMDiffusionKernel
     variable = send
-    coefficient = 1.0
   []
 []
 
@@ -70,5 +67,4 @@
 
 [Executioner]
   type = MFEMSteady
-  device = cpu
 []

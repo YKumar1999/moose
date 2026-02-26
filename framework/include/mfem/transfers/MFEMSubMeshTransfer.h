@@ -7,14 +7,11 @@
 //* Licensed under LGPL 2.1, please see LICENSE for details
 //* https://www.gnu.org/licenses/lgpl-2.1.html
 
-#ifdef MFEM_ENABLED
+#ifdef MOOSE_MFEM_ENABLED
 
 #pragma once
 
 #include "MFEMGeneralUserObject.h"
-#include "libmesh/ignore_warnings.h"
-#include <mfem.hpp>
-#include "libmesh/restore_warnings.h"
 
 /**
  * Class to transfer MFEM variable data to or from a restricted copy of the variable defined on an a
@@ -27,11 +24,11 @@ public:
 
   MFEMSubMeshTransfer(const InputParameters & parameters);
 
-  // Executes the transfer.
+  /// Executes the transfer.
   virtual void execute() override;
 
 private:
-  // Name of source MFEMVariable to transfer DoF data from.
+  /// Name of source MFEMVariable to transfer DoF data from.
   const VariableName & _source_var_name;
   /// Reference to source gridfunction.
   const mfem::ParGridFunction & _source_var;

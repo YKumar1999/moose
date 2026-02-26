@@ -79,6 +79,7 @@
 #include "UserObject.h"
 #include "OffDiagonalScalingMatrix.h"
 #include "HDGKernel.h"
+#include "AutomaticMortarGeneration.h"
 
 // libMesh
 #include "libmesh/nonlinear_solver.h"
@@ -127,12 +128,19 @@ NonlinearSystemBase::NonlinearSystemBase(FEProblemBase & fe_problem,
     _nodal_bcs(/*threaded=*/false),
     _preset_nodal_bcs(/*threaded=*/false),
     _ad_preset_nodal_bcs(/*threaded=*/false),
+#ifdef MOOSE_KOKKOS_ENABLED
+    _kokkos_kernels(/*threaded=*/false),
+    _kokkos_integrated_bcs(/*threaded=*/false),
+    _kokkos_nodal_bcs(/*threaded=*/false),
+    _kokkos_preset_nodal_bcs(/*threaded=*/false),
+    _kokkos_nodal_kernels(/*threaded=*/false),
+#endif
+    _general_dampers(/*threaded=*/false),
     _splits(/*threaded=*/false),
     _increment_vec(NULL),
     _use_finite_differenced_preconditioner(false),
     _fdcoloring(nullptr),
-    _have_decomposition(false),
-    _use_field_split_preconditioner(false),
+    _fsp(nullptr),
     _add_implicit_geometric_coupling_entries_to_jacobian(false),
     _assemble_constraints_separately(false),
     _need_residual_ghosted(false),
@@ -189,6 +197,22 @@ NonlinearSystemBase::preInit()
 
   if (_residual_copy.get())
     _residual_copy->init(_sys.n_dofs(), false, SERIAL);
+
+#ifdef MOOSE_KOKKOS_ENABLED
+  if (_fe_problem.hasKokkosObjects())
+    _sys.get_dof_map().full_sparsity_pattern_needed();
+#endif
+}
+
+void
+NonlinearSystemBase::reinitMortarFunctors()
+{
+  // reinit is called on meshChanged() in FEProblemBase. We could implement meshChanged() instead.
+  // Subdomains might have changed
+  for (auto & functor : _displaced_mortar_functors)
+    functor.second.setupMortarMaterials();
+  for (auto & functor : _undisplaced_mortar_functors)
+    functor.second.setupMortarMaterials();
 }
 
 void
@@ -249,6 +273,15 @@ NonlinearSystemBase::initialSetup()
     _constraints.initialSetup();
     _general_dampers.initialSetup();
     _nodal_bcs.initialSetup();
+    _preset_nodal_bcs.residualSetup();
+    _ad_preset_nodal_bcs.residualSetup();
+
+#ifdef MOOSE_KOKKOS_ENABLED
+    _kokkos_kernels.initialSetup();
+    _kokkos_nodal_kernels.initialSetup();
+    _kokkos_integrated_bcs.initialSetup();
+    _kokkos_nodal_bcs.initialSetup();
+#endif
   }
 
   {
@@ -258,13 +291,11 @@ NonlinearSystemBase::initialSetup()
     {
       // go over mortar interfaces and construct functors
       const auto & mortar_interfaces = _fe_problem.getMortarInterfaces(displaced);
-      for (const auto & mortar_interface : mortar_interfaces)
+      for (const auto & [primary_secondary_boundary_pair, mortar_generation_ptr] :
+           mortar_interfaces)
       {
-        const auto primary_secondary_boundary_pair = mortar_interface.first;
         if (!_constraints.hasActiveMortarConstraints(primary_secondary_boundary_pair, displaced))
           continue;
-
-        const auto & mortar_generation_object = mortar_interface.second;
 
         auto & mortar_constraints =
             _constraints.getActiveMortarConstraints(primary_secondary_boundary_pair, displaced);
@@ -278,7 +309,7 @@ NonlinearSystemBase::initialSetup()
 
         mortar_functors.emplace(primary_secondary_boundary_pair,
                                 ComputeMortarFunctor(mortar_constraints,
-                                                     mortar_generation_object,
+                                                     *mortar_generation_ptr,
                                                      subproblem,
                                                      _fe_problem,
                                                      displaced,
@@ -354,6 +385,15 @@ NonlinearSystemBase::timestepSetup()
   _constraints.timestepSetup();
   _general_dampers.timestepSetup();
   _nodal_bcs.timestepSetup();
+  _preset_nodal_bcs.timestepSetup();
+  _ad_preset_nodal_bcs.timestepSetup();
+
+#ifdef MOOSE_KOKKOS_ENABLED
+  _kokkos_kernels.timestepSetup();
+  _kokkos_nodal_kernels.timestepSetup();
+  _kokkos_integrated_bcs.timestepSetup();
+  _kokkos_nodal_bcs.timestepSetup();
+#endif
 }
 
 void
@@ -408,39 +448,22 @@ NonlinearSystemBase::customSetup(const ExecFlagType & exec_type)
   _constraints.customSetup(exec_type);
   _general_dampers.customSetup(exec_type);
   _nodal_bcs.customSetup(exec_type);
+  _preset_nodal_bcs.customSetup(exec_type);
+  _ad_preset_nodal_bcs.customSetup(exec_type);
+
+#ifdef MOOSE_KOKKOS_ENABLED
+  _kokkos_kernels.customSetup(exec_type);
+  _kokkos_nodal_kernels.customSetup(exec_type);
+  _kokkos_integrated_bcs.customSetup(exec_type);
+  _kokkos_nodal_bcs.customSetup(exec_type);
+#endif
 }
 
 void
 NonlinearSystemBase::setupDM()
 {
-  if (haveFieldSplitPreconditioner())
-    Moose::PetscSupport::petscSetupDM(*this, _decomposition_split);
-}
-
-void
-NonlinearSystemBase::setDecomposition(const std::vector<std::string> & splits)
-{
-  /// Although a single top-level split is allowed in Problem, treat it as a list of splits for conformity with the Split input syntax.
-  if (splits.size() && splits.size() != 1)
-    mooseError("Only a single top-level split is allowed in a Problem's decomposition.");
-
-  if (splits.size())
-  {
-    _decomposition_split = splits[0];
-    _have_decomposition = true;
-  }
-  else
-    _have_decomposition = false;
-}
-
-void
-NonlinearSystemBase::setupFieldDecomposition()
-{
-  if (!_have_decomposition)
-    return;
-
-  std::shared_ptr<Split> top_split = getSplit(_decomposition_split);
-  top_split->setup(*this);
+  if (_fsp)
+    _fsp->setupDM();
 }
 
 void
@@ -498,9 +521,11 @@ NonlinearSystemBase::addNodalKernel(const std::string & kernel_name,
     postAddResidualObject(*kernel);
   }
 
-  if (parameters.get<std::vector<AuxVariableName>>("save_in").size() > 0)
+  if (parameters.have_parameter<std::vector<AuxVariableName>>("save_in") &&
+      parameters.get<std::vector<AuxVariableName>>("save_in").size() > 0)
     _has_save_in = true;
-  if (parameters.get<std::vector<AuxVariableName>>("diag_save_in").size() > 0)
+  if (parameters.have_parameter<std::vector<AuxVariableName>>("save_in") &&
+      parameters.get<std::vector<AuxVariableName>>("diag_save_in").size() > 0)
     _has_diag_save_in = true;
 }
 
@@ -815,7 +840,7 @@ NonlinearSystemBase::computeResidualTags(const std::set<TagID> & tags)
   _n_residual_evaluations++;
 
   // not suppose to do anythin on matrix
-  deactiveAllMatrixTags();
+  deactivateAllMatrixTags();
 
   FloatingPointExceptionGuard fpe_guard(_app);
 
@@ -875,7 +900,7 @@ NonlinearSystemBase::computeResidualTags(const std::set<TagID> & tags)
   }
 
   // not supposed to do anything on matrix
-  activeAllMatrixTags();
+  activateAllMatrixTags();
 
   _fe_problem.setCurrentlyComputingResidual(false);
 }
@@ -931,7 +956,7 @@ NonlinearSystemBase::onTimestepBegin()
 void
 NonlinearSystemBase::setInitialSolution()
 {
-  deactiveAllMatrixTags();
+  deactivateAllMatrixTags();
 
   NumericVector<Number> & initial_solution(solution());
   if (_predictor.get())
@@ -959,16 +984,20 @@ NonlinearSystemBase::setInitialSolution()
 
       if (node->processor_id() == processor_id())
       {
-        // reinit variables in nodes
-        _fe_problem.reinitNodeFace(node, boundary_id, 0);
+        bool has_preset_nodal_bcs = _preset_nodal_bcs.hasActiveBoundaryObjects(boundary_id);
+        bool has_ad_preset_nodal_bcs = _ad_preset_nodal_bcs.hasActiveBoundaryObjects(boundary_id);
 
-        if (_preset_nodal_bcs.hasActiveBoundaryObjects(boundary_id))
+        // reinit variables in nodes
+        if (has_preset_nodal_bcs || has_ad_preset_nodal_bcs)
+          _fe_problem.reinitNodeFace(node, boundary_id, 0);
+
+        if (has_preset_nodal_bcs)
         {
           const auto & preset_bcs = _preset_nodal_bcs.getActiveBoundaryObjects(boundary_id);
           for (const auto & preset_bc : preset_bcs)
             preset_bc->computeValue(initial_solution);
         }
-        if (_ad_preset_nodal_bcs.hasActiveBoundaryObjects(boundary_id))
+        if (has_ad_preset_nodal_bcs)
         {
           const auto & preset_bcs_res = _ad_preset_nodal_bcs.getActiveBoundaryObjects(boundary_id);
           for (const auto & preset_bc : preset_bcs_res)
@@ -977,6 +1006,11 @@ NonlinearSystemBase::setInitialSolution()
       }
     }
   }
+
+#ifdef MOOSE_KOKKOS_ENABLED
+  if (_kokkos_preset_nodal_bcs.hasObjects())
+    setKokkosInitialSolution();
+#endif
 
   _sys.solution->close();
   update();
@@ -1093,13 +1127,12 @@ NonlinearSystemBase::enforceNodalConstraintsResidual(NumericVector<Number> & res
   }
 }
 
-void
-NonlinearSystemBase::enforceNodalConstraintsJacobian()
+bool
+NonlinearSystemBase::enforceNodalConstraintsJacobian(const SparseMatrix<Number> & jacobian_to_view)
 {
   if (!hasMatrix(systemMatrixTag()))
     mooseError(" A system matrix is required");
 
-  auto & jacobian = getMatrix(systemMatrixTag());
   THREAD_ID tid = 0; // constraints are going to be done single-threaded
 
   if (_constraints.hasActiveNodalConstraints())
@@ -1114,11 +1147,15 @@ NonlinearSystemBase::enforceNodalConstraintsJacobian()
       {
         _fe_problem.reinitNodes(primary_node_ids, tid);
         _fe_problem.reinitNodesNeighbor(secondary_node_ids, tid);
-        nc->computeJacobian(jacobian);
+        nc->computeJacobian(jacobian_to_view);
       }
     }
     _fe_problem.addCachedJacobian(tid);
+
+    return true;
   }
+  else
+    return false;
 }
 
 void
@@ -1501,7 +1538,7 @@ NonlinearSystemBase::constraintResiduals(NumericVector<Number> & residual, bool 
     if (_constraints.hasActiveElemElemConstraints(it.first, displaced))
     {
       // ElemElemConstraint objects
-      const auto & _element_constraints =
+      const auto & element_constraints =
           _constraints.getActiveElemElemConstraints(it.first, displaced);
 
       // go over pair elements
@@ -1518,7 +1555,7 @@ NonlinearSystemBase::constraintResiduals(NumericVector<Number> & residual, bool 
         const ElementPairInfo & info = elem_pair_loc.getElemPairInfo(pr);
 
         // for each element process constraints on the
-        for (const auto & ec : _element_constraints)
+        for (const auto & ec : element_constraints)
         {
           _fe_problem.setCurrentSubdomainID(elem1, tid);
           subproblem.reinitElemPhys(elem1, info._elem1_constraint_q_point, tid);
@@ -1713,11 +1750,19 @@ NonlinearSystemBase::residualSetup()
   _constraints.residualSetup();
   _general_dampers.residualSetup();
   _nodal_bcs.residualSetup();
+  _preset_nodal_bcs.residualSetup();
+  _ad_preset_nodal_bcs.residualSetup();
+
+#ifdef MOOSE_KOKKOS_ENABLED
+  _kokkos_kernels.residualSetup();
+  _kokkos_nodal_kernels.residualSetup();
+  _kokkos_integrated_bcs.residualSetup();
+  _kokkos_nodal_bcs.residualSetup();
+#endif
 
   // Avoid recursion
   if (this == &_fe_problem.currentNonlinearSystem())
     _fe_problem.residualSetup();
-  _app.solutionInvalidity().resetSolutionInvalidCurrentIteration();
 }
 
 void
@@ -1728,6 +1773,11 @@ NonlinearSystemBase::computeResidualInternal(const std::set<TagID> & tags)
   TIME_SECTION("computeResidualInternal", 3);
 
   residualSetup();
+
+#ifdef MOOSE_KOKKOS_ENABLED
+  if (_fe_problem.hasKokkosResidualObjects())
+    computeKokkosResidual(tags);
+#endif
 
   const auto vector_tag_data = _fe_problem.getVectorTags(tags);
 
@@ -1937,7 +1987,7 @@ NonlinearSystemBase::computeResidualInternal(const std::set<TagID> & tags)
   // Accumulate the occurrence of solution invalid warnings for the current iteration cumulative
   // counters
   _app.solutionInvalidity().syncIteration();
-  _app.solutionInvalidity().solutionInvalidAccumulation();
+  _app.solutionInvalidity().accumulateIterationIntoTimeStepOccurences();
 }
 
 void
@@ -1947,7 +1997,7 @@ NonlinearSystemBase::computeResidualAndJacobianInternal(const std::set<TagID> & 
   TIME_SECTION("computeResidualAndJacobianInternal", 3);
 
   // Make matrix ready to use
-  activeAllMatrixTags();
+  activateAllMatrixTags();
 
   for (auto tag : matrix_tags)
   {
@@ -2535,7 +2585,7 @@ NonlinearSystemBase::constraintJacobians(const SparseMatrix<Number> & jacobian_t
     if (_constraints.hasActiveElemElemConstraints(it.first, displaced))
     {
       // ElemElemConstraint objects
-      const auto & _element_constraints =
+      const auto & element_constraints =
           _constraints.getActiveElemElemConstraints(it.first, displaced);
 
       // go over pair elements
@@ -2552,7 +2602,7 @@ NonlinearSystemBase::constraintJacobians(const SparseMatrix<Number> & jacobian_t
         const ElementPairInfo & info = elem_pair_loc.getElemPairInfo(pr);
 
         // for each element process constraints on the
-        for (const auto & ec : _element_constraints)
+        for (const auto & ec : element_constraints)
         {
           _fe_problem.setCurrentSubdomainID(elem1, tid);
           subproblem.reinitElemPhys(elem1, info._elem1_constraint_q_point, tid);
@@ -2733,6 +2783,9 @@ NonlinearSystemBase::computeScalarKernelsJacobians(const std::set<TagID> & tags)
     bool have_scalar_contributions = false;
     for (const auto & kernel : scalars)
     {
+      if (!kernel->computesJacobian())
+        continue;
+
       kernel->reinit();
       const std::vector<dof_id_type> & dof_indices = kernel->variable().dofIndices();
       const DofMap & dof_map = kernel->variable().dofMap();
@@ -2776,11 +2829,19 @@ NonlinearSystemBase::jacobianSetup()
   _constraints.jacobianSetup();
   _general_dampers.jacobianSetup();
   _nodal_bcs.jacobianSetup();
+  _preset_nodal_bcs.jacobianSetup();
+  _ad_preset_nodal_bcs.jacobianSetup();
+
+#ifdef MOOSE_KOKKOS_ENABLED
+  _kokkos_kernels.jacobianSetup();
+  _kokkos_nodal_kernels.jacobianSetup();
+  _kokkos_integrated_bcs.jacobianSetup();
+  _kokkos_nodal_bcs.jacobianSetup();
+#endif
 
   // Avoid recursion
   if (this == &_fe_problem.currentNonlinearSystem())
     _fe_problem.jacobianSetup();
-  _app.solutionInvalidity().resetSolutionInvalidCurrentIteration();
 }
 
 void
@@ -2791,7 +2852,7 @@ NonlinearSystemBase::computeJacobianInternal(const std::set<TagID> & tags)
   _fe_problem.setCurrentNonlinearSystem(number());
 
   // Make matrix ready to use
-  activeAllMatrixTags();
+  activateAllMatrixTags();
 
   for (auto tag : tags)
   {
@@ -2816,6 +2877,11 @@ NonlinearSystemBase::computeJacobianInternal(const std::set<TagID> & tags)
   }
 
   jacobianSetup();
+
+#ifdef MOOSE_KOKKOS_ENABLED
+  if (_fe_problem.hasKokkosResidualObjects())
+    computeKokkosJacobian(tags);
+#endif
 
   // Jacobian contributions from UOs - for now this is used for ray tracing
   // and ray kernels that contribute to the Jacobian (think line sources)
@@ -2988,32 +3054,39 @@ NonlinearSystemBase::computeJacobianInternal(const std::set<TagID> & tags)
       // Some constraints need to be able to read values from the Jacobian, which requires that it
       // be closed/assembled
       auto & system_matrix = getMatrix(systemMatrixTag());
-#if PETSC_RELEASE_GREATER_EQUALS(3, 23, 0)
-      SparseMatrix<Number> * view_jac_ptr;
       std::unique_ptr<SparseMatrix<Number>> hash_copy;
-      if (system_matrix.use_hash_table())
+      const SparseMatrix<Number> * view_jac_ptr;
+      auto make_readable_jacobian = [&]()
       {
-        hash_copy = libMesh::cast_ref<PetscMatrix<Number> &>(system_matrix).copy_from_hash();
-        view_jac_ptr = hash_copy.get();
-      }
-      else
-        view_jac_ptr = &system_matrix;
-      auto & jacobian_to_view = *view_jac_ptr;
+#if PETSC_RELEASE_GREATER_EQUALS(3, 23, 0)
+        if (system_matrix.use_hash_table())
+        {
+          hash_copy = libMesh::cast_ref<PetscMatrix<Number> &>(system_matrix).copy_from_hash();
+          view_jac_ptr = hash_copy.get();
+        }
+        else
+          view_jac_ptr = &system_matrix;
 #else
-      auto & jacobian_to_view = system_matrix;
+        view_jac_ptr = &system_matrix;
 #endif
-      if (&jacobian_to_view == &system_matrix)
-        system_matrix.close();
+        if (view_jac_ptr == &system_matrix)
+          system_matrix.close();
+      };
+
+      make_readable_jacobian();
 
       // Nodal Constraints
-      enforceNodalConstraintsJacobian();
+      const bool had_nodal_constraints = enforceNodalConstraintsJacobian(*view_jac_ptr);
+      if (had_nodal_constraints)
+        // We have to make a new readable Jacobian
+        make_readable_jacobian();
 
       // Undisplaced Constraints
-      constraintJacobians(jacobian_to_view, false);
+      constraintJacobians(*view_jac_ptr, false);
 
       // Displaced Constraints
       if (_fe_problem.getDisplacedProblem())
-        constraintJacobians(jacobian_to_view, true);
+        constraintJacobians(*view_jac_ptr, true);
     }
   }
   PARALLEL_CATCH;
@@ -3146,7 +3219,7 @@ NonlinearSystemBase::computeJacobianInternal(const std::set<TagID> & tags)
   // Accumulate the occurrence of solution invalid warnings for the current iteration cumulative
   // counters
   _app.solutionInvalidity().syncIteration();
-  _app.solutionInvalidity().solutionInvalidAccumulation();
+  _app.solutionInvalidity().accumulateIterationIntoTimeStepOccurences();
 }
 
 void
@@ -3301,14 +3374,24 @@ NonlinearSystemBase::updateActive(THREAD_ID tid)
   _dirac_kernels.updateActive(tid);
   _kernels.updateActive(tid);
   _nodal_kernels.updateActive(tid);
+
   if (tid == 0)
   {
     _general_dampers.updateActive();
     _nodal_bcs.updateActive();
     _preset_nodal_bcs.updateActive();
     _ad_preset_nodal_bcs.updateActive();
+    _splits.updateActive();
     _constraints.updateActive();
     _scalar_kernels.updateActive();
+
+#ifdef MOOSE_KOKKOS_ENABLED
+    _kokkos_kernels.updateActive();
+    _kokkos_nodal_kernels.updateActive();
+    _kokkos_integrated_bcs.updateActive();
+    _kokkos_nodal_bcs.updateActive();
+    _kokkos_preset_nodal_bcs.updateActive();
+#endif
   }
 }
 
@@ -3382,6 +3465,13 @@ NonlinearSystemBase::computeDamping(const NumericVector<Number> & solution,
     // calling stopSolve(), it is now up to PETSc to return a
     // "diverged" reason during the next solve.
   }
+  catch (std::exception & e)
+  {
+    // Allow the libmesh error/exception on negative jacobian
+    const std::string & message = e.what();
+    if (message.find("Jacobian") == std::string::npos)
+      throw;
+  }
 
   _communicator.min(damping);
 
@@ -3422,6 +3512,10 @@ NonlinearSystemBase::computeDiracContributions(const std::set<TagID> & tags, boo
     // Threads::parallel_reduce(range, cd);
 
     cd(range);
+
+    if (is_jacobian)
+      for (const auto tid : make_range(libMesh::n_threads()))
+        _fe_problem.addCachedJacobian(tid);
   }
 }
 
@@ -3603,6 +3697,11 @@ NonlinearSystemBase::checkKernelCoverage(const std::set<SubdomainID> & mesh_subd
   _scalar_kernels.subdomainsCovered(input_subdomains, kernel_variables);
   _constraints.subdomainsCovered(input_subdomains, kernel_variables);
 
+#ifdef MOOSE_KOKKOS_ENABLED
+  _kokkos_kernels.subdomainsCovered(input_subdomains, kernel_variables);
+  _kokkos_nodal_kernels.subdomainsCovered(input_subdomains, kernel_variables);
+#endif
+
   if (_fe_problem.haveFV())
   {
     std::vector<FVElementalKernel *> fv_elemental_kernels;
@@ -3758,20 +3857,56 @@ NonlinearSystemBase::timeKernelVariableNames()
 bool
 NonlinearSystemBase::needBoundaryMaterialOnSide(BoundaryID bnd_id, THREAD_ID tid) const
 {
-  return _integrated_bcs.hasActiveBoundaryObjects(bnd_id, tid);
+  // IntegratedBCs are for now the only objects we consider to be consuming
+  // matprops on boundaries.
+  if (_integrated_bcs.hasActiveBoundaryObjects(bnd_id, tid))
+    for (const auto & bc : _integrated_bcs.getActiveBoundaryObjects(bnd_id, tid))
+      if (std::static_pointer_cast<MaterialPropertyInterface>(bc)->getMaterialPropertyCalled())
+        return true;
+
+  // Thin layer heat transfer in the heat_transfer module is being used on a boundary even though
+  // it's an interface kernel. That boundary is external, on both sides of a gap in a mesh
+  if (_interface_kernels.hasActiveBoundaryObjects(bnd_id, tid))
+    for (const auto & ik : _interface_kernels.getActiveBoundaryObjects(bnd_id, tid))
+      if (std::static_pointer_cast<MaterialPropertyInterface>(ik)->getMaterialPropertyCalled())
+        return true;
+
+  // Because MortarConstraints do not inherit from BoundaryRestrictable, they are not sorted
+  // by boundary in the MooseObjectWarehouse. So for now, we return true for all boundaries
+  // Note: constraints are not threaded at this time
+  if (_constraints.hasActiveObjects(/*tid*/ 0))
+    for (const auto & ct : _constraints.getActiveObjects(/*tid*/ 0))
+      if (auto mpi = std::dynamic_pointer_cast<MaterialPropertyInterface>(ct);
+          mpi && mpi->getMaterialPropertyCalled())
+        return true;
+  return false;
 }
 
 bool
 NonlinearSystemBase::needInterfaceMaterialOnSide(BoundaryID bnd_id, THREAD_ID tid) const
 {
-  return _interface_kernels.hasActiveBoundaryObjects(bnd_id, tid);
+  // InterfaceKernels are for now the only objects we consider to be consuming matprops on internal
+  // boundaries.
+  if (_interface_kernels.hasActiveBoundaryObjects(bnd_id, tid))
+    for (const auto & ik : _interface_kernels.getActiveBoundaryObjects(bnd_id, tid))
+      if (std::static_pointer_cast<MaterialPropertyInterface>(ik)->getMaterialPropertyCalled())
+        return true;
+  return false;
 }
 
 bool
-NonlinearSystemBase::needSubdomainMaterialOnSide(SubdomainID /*subdomain_id*/,
-                                                 THREAD_ID /*tid*/) const
+NonlinearSystemBase::needInternalNeighborSideMaterial(SubdomainID subdomain_id, THREAD_ID tid) const
 {
-  return _doing_dg;
+  // DGKernels are for now the only objects we consider to be consuming matprops on
+  // internal sides.
+  if (_dg_kernels.hasActiveBlockObjects(subdomain_id, tid))
+    for (const auto & dg : _dg_kernels.getActiveBlockObjects(subdomain_id, tid))
+      if (std::static_pointer_cast<MaterialPropertyInterface>(dg)->getMaterialPropertyCalled())
+        return true;
+  // NOTE:
+  // HDG kernels do not require face material properties on internal sides at this time.
+  // The idea is to have element locality of HDG for hybridization
+  return false;
 }
 
 bool
@@ -4121,4 +4256,13 @@ NonlinearSystemBase::destroyColoring()
 {
   if (matrixFromColoring())
     LibmeshPetscCall(MatFDColoringDestroy(&_fdcoloring));
+}
+
+FieldSplitPreconditionerBase &
+NonlinearSystemBase::getFieldSplitPreconditioner()
+{
+  if (!_fsp)
+    mooseError("No field split preconditioner is present for this system");
+
+  return *_fsp;
 }

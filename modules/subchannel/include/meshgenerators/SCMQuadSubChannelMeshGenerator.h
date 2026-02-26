@@ -8,6 +8,7 @@
 //* https://www.gnu.org/licenses/lgpl-2.1.html
 
 #pragma once
+
 #include <vector>
 #include "MeshGenerator.h"
 #include "libmesh/point.h"
@@ -66,10 +67,11 @@ protected:
   /// Number of pins
   const unsigned int _n_pins;
   /**
-   * The gap, not to be confused with the gap between pins, this refers to the gap
-   * next to the duct. Edge Pitch W = (pitch/2 - pin_diameter/2 + gap) [m]
+   * The side gap, not to be confused with the gap between pins, this refers to the gap
+   * next to the duct or else the distance between the subchannel centroid to the duct wall.
+   * distance(edge pin center, duct wall) = pitch / 2 + side_gap [m].
    */
-  const Real _gap;
+  const Real _side_gap;
   /// block index
   const unsigned int _block_id;
   /// Channel nodes

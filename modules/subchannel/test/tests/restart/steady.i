@@ -11,7 +11,7 @@ P_out = 4.923e6 # Pa
     n_cells = 10
     pitch = 0.0126
     pin_diameter = 0.00950
-    gap = 0.00095 # the half gap between sub-channel assemblies
+    side_gap = 0.00095
     heated_length = 1
     spacer_z = '0.0'
     spacer_k = '0.0'
@@ -34,6 +34,13 @@ P_out = 4.923e6 # Pa
   compute_viscosity = true
   compute_power = true
   P_out = ${P_out}
+  friction_closure = 'MATRA'
+[]
+
+[SCMClosures]
+  [MATRA]
+    type = SCMFrictionMATRA
+  []
 []
 
 [ICs]
@@ -116,6 +123,7 @@ P_out = 4.923e6 # Pa
 [Outputs]
   exodus = true
   checkpoint = true
+  hide = 'ff'
 []
 
 [Executioner]

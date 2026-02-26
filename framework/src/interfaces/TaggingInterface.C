@@ -46,9 +46,9 @@ TaggingInterface::validParams()
   params.addParam<std::vector<TagName>>("extra_matrix_tags",
                                         "The extra tags for the matrices this Kernel should fill");
 
-  params.addParamNamesToGroup(
-      "vector_tags matrix_tags extra_vector_tags extra_matrix_tags absolute_value_vector_tags",
-      "Contribution to tagged field data");
+  params.addParamNamesToGroup("vector_tags matrix_tags extra_vector_tags extra_matrix_tags "
+                              "absolute_value_vector_tags matrix_only",
+                              "Contribution to tagged field data");
 
   return params;
 }
@@ -155,6 +155,16 @@ TaggingInterface::TaggingInterface(const MooseObject * moose_object)
     }
   }
 }
+
+#ifdef MOOSE_KOKKOS_ENABLED
+TaggingInterface::TaggingInterface(const TaggingInterface & object,
+                                   const Moose::Kokkos::FunctorCopy &)
+  : _subproblem(object._subproblem),
+    _moose_object(object._moose_object),
+    _tag_params(object._tag_params)
+{
+}
+#endif
 
 void
 TaggingInterface::useVectorTag(const TagName & tag_name, VectorTagsKey)

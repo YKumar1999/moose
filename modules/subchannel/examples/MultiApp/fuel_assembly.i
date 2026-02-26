@@ -119,7 +119,7 @@ duct_inside = '${fparse duct_outside - 2 * duct_thickness}'
   [mu]
     block = subchannel
   []
-  [q_prime_duct]
+  [duct_heat_flux]
     block = duct
     initial_condition = 0
   []
@@ -134,7 +134,7 @@ duct_inside = '${fparse duct_outside - 2 * duct_thickness}'
   []
 []
 
-[Problem]
+[SubChannel]
   type = TriSubChannel1PhaseProblem
   fp = sodium
   P_out = ${P_out}
@@ -145,11 +145,16 @@ duct_inside = '${fparse duct_outside - 2 * duct_thickness}'
   implicit = false
   segregated = true
   staggered_pressure = false
-  monolithic_thermal = false
 
   # Tolerances
   P_tol = 1.0e-4
   T_tol = 1.0e-8
+
+  # Heat Transfer Correlations
+  pin_HTC_closure = 'gnielinski'
+  duct_HTC_closure = 'gnielinski'
+  # Friction Correlation
+  friction_closure = 'Cheng'
 
   # Output
   compute_density = true
@@ -157,6 +162,15 @@ duct_inside = '${fparse duct_outside - 2 * duct_thickness}'
   compute_power = true
   verbose_multiapps = true
   verbose_subchannel = false
+[]
+
+[SCMClosures]
+  [Cheng]
+    type = SCMFrictionUpdatedChengTodreas
+  []
+  [gnielinski]
+    type = SCMHTCGnielinski
+  []
 []
 
 [ICs]

@@ -11,7 +11,7 @@
 [SubMeshes]
   [exterior]
     type = MFEMBoundarySubMesh
-    boundary = 3
+    boundary = curved_surface
   []
 []
 
@@ -34,7 +34,6 @@
   [mass]
     type = MFEMMassKernel
     variable = submesh_potential
-    coefficient = 1.0
   []
   [source]
     type = MFEMDomainLFKernel

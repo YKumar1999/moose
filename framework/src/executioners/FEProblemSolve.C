@@ -14,6 +14,7 @@
 #include "LinearSystem.h"
 #include "Convergence.h"
 #include "Executioner.h"
+#include "ConvergenceIterationTypes.h"
 
 std::set<std::string> const FEProblemSolve::_moose_line_searches = {"contact", "project"};
 
@@ -63,13 +64,6 @@ FEProblemSolve::validParams()
   InputParameters params = MultiSystemSolveObject::validParams();
   params += FEProblemSolve::feProblemDefaultConvergenceParams();
 
-  params.addParam<std::vector<std::vector<std::string>>>(
-      "splitting",
-      {},
-      "Top-level splitting defining a hierarchical decomposition into "
-      "subsystems to help the solver. Outer-vector of this vector-of-vector parameter correspond "
-      "to each nonlinear system.");
-
   std::set<std::string> line_searches = mooseLineSearches();
 
   std::set<std::string> alias_line_searches = {"default", "none", "basic"};
@@ -115,12 +109,6 @@ FEProblemSolve::validParams()
       "Specifies whether or not to reuse the base vector for matrix-free calculation");
   params.addParam<bool>(
       "skip_exception_check", false, "Specifies whether or not to skip exception check");
-  params.addParam<bool>("compute_initial_residual_before_preset_bcs",
-                        false,
-                        "Use the residual norm computed *before* solution modifying objects like "
-                        "preset BCs are imposed in relative convergence check.");
-  params.deprecateParam(
-      "compute_initial_residual_before_preset_bcs", "use_pre_SMO_residual", "12/31/2024");
   params.addParam<bool>(
       "use_pre_SMO_residual",
       false,
@@ -202,7 +190,7 @@ FEProblemSolve::validParams()
                               "Linear Solver");
   params.addParamNamesToGroup(
       "solve_type snesmf_reuse_base use_pre_SMO_residual "
-      "num_grids residual_and_jacobian_together splitting nonlinear_convergence linear_convergence",
+      "num_grids residual_and_jacobian_together nonlinear_convergence linear_convergence",
       "Nonlinear Solver");
   params.addParamNamesToGroup(
       "automatic_scaling compute_scaling_once off_diagonals_in_auto_scaling "
@@ -328,13 +316,6 @@ FEProblemSolve::FEProblemSolve(Executioner & ex)
 
     nl.setPreSMOResidual(getParam<bool>("use_pre_SMO_residual"));
 
-    const auto & all_splittings = getParam<std::vector<std::vector<std::string>>>("splitting");
-    if (all_splittings.size())
-      nl.setDecomposition(
-          getParamFromNonlinearSystemVectorParam<std::vector<std::string>>("splitting", i_nl_sys));
-    else
-      nl.setDecomposition({});
-
     const auto res_and_jac =
         getParamFromNonlinearSystemVectorParam<bool>("residual_and_jacobian_together", i_nl_sys);
     if (res_and_jac)
@@ -409,15 +390,56 @@ FEProblemSolve::getParamFromNonlinearSystemVectorParam(const std::string & param
     return param_vec[index];
 }
 
+void
+FEProblemSolve::initialSetup()
+{
+  MultiSystemSolveObject::initialSetup();
+  convergenceSetup();
+  // Keep track of the solution warnings from the setup
+  // before a count reset at the beginning of the time step
+  if (!_app.isRecovering())
+  {
+    _app.solutionInvalidity().syncIteration();
+    _app.solutionInvalidity().accumulateIterationIntoTimeStepOccurences();
+    _app.solutionInvalidity().accumulateTimeStepIntoTotalOccurences(0);
+  }
+}
+
+void
+FEProblemSolve::convergenceSetup()
+{
+  // nonlinear
+  const auto conv_names = _problem.getNonlinearConvergenceNames();
+  for (const auto & conv_name : conv_names)
+  {
+    auto & conv = _problem.getConvergence(conv_name);
+    conv.checkIterationType(ConvergenceIterationTypes::NONLINEAR);
+  }
+
+  // linear
+  if (isParamValid("linear_convergence"))
+  {
+    const auto conv_names = getParam<std::vector<ConvergenceName>>("linear_convergence");
+    for (const auto & conv_name : conv_names)
+    {
+      auto & conv = _problem.getConvergence(conv_name);
+      conv.checkIterationType(ConvergenceIterationTypes::LINEAR);
+    }
+  }
+
+  // multisystem fixed point
+  if (isParamValid("multi_system_fixed_point_convergence"))
+  {
+    _multi_sys_fp_convergence =
+        &_problem.getConvergence(getParam<ConvergenceName>("multi_system_fixed_point_convergence"));
+    _multi_sys_fp_convergence->checkIterationType(
+        ConvergenceIterationTypes::MULTISYSTEM_FIXED_POINT);
+  }
+}
+
 bool
 FEProblemSolve::solve()
 {
-  // This should be late enough to retrieve the convergence object.
-  // TODO: Move this to a setup phase, which does not exist for SolveObjects
-  if (isParamValid("multi_system_fixed_point_convergence"))
-    _multi_sys_fp_convergence =
-        &_problem.getConvergence(getParam<ConvergenceName>("multi_system_fixed_point_convergence"));
-
   // Outer loop for multi-grid convergence
   bool converged = false;
   unsigned int num_fp_multisys_iters = 0;

@@ -7,11 +7,11 @@
 //* Licensed under LGPL 2.1, please see LICENSE for details
 //* https://www.gnu.org/licenses/lgpl-2.1.html
 
-#ifdef MFEM_ENABLED
+#ifdef MOOSE_MFEM_ENABLED
 
 #pragma once
+
 #include <map>
-#include <memory>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -20,9 +20,6 @@
 
 #include "MooseException.h"
 
-#include "libmesh/ignore_warnings.h"
-#include <mfem.hpp>
-#include "libmesh/restore_warnings.h"
 #include "CoefficientMap.h"
 
 namespace Moose::MFEM
@@ -173,7 +170,7 @@ public:
   bool scalarPropertyIsDefined(const std::string & name, const std::string & block) const;
   bool vectorPropertyIsDefined(const std::string & name, const std::string & block) const;
   bool matrixPropertyIsDefined(const std::string & name, const std::string & block) const;
-  void setTime(const double time);
+  void setTime(const mfem::real_t time);
 
 private:
   ScalarMap _scalar_coeffs;

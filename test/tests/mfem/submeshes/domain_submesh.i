@@ -10,7 +10,7 @@
 [SubMeshes]
   [wire]
     type = MFEMDomainSubMesh
-    block = 1
+    block = interior
   []
 []
 
@@ -36,17 +36,16 @@
 []
 
 [BCs]
+  [top]
+    type = MFEMScalarDirichletBC
+    variable = submesh_potential
+    boundary = front
+    coefficient = 1.0
+  []
   [bottom]
     type = MFEMScalarDirichletBC
     variable = submesh_potential
-    boundary = '1'
-    coefficient = 1.0
-  []
-  [low_terminal]
-    type = MFEMScalarDirichletBC
-    variable = submesh_potential
-    boundary = '2'
-    coefficient = 0.0
+    boundary = back
   []
 []
 
@@ -54,7 +53,6 @@
   [diff]
     type = MFEMDiffusionKernel
     variable = submesh_potential
-    coefficient = 1.0
   []
 []
 

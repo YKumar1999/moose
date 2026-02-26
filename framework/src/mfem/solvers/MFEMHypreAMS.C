@@ -7,7 +7,7 @@
 //* Licensed under LGPL 2.1, please see LICENSE for details
 //* https://www.gnu.org/licenses/lgpl-2.1.html
 
-#ifdef MFEM_ENABLED
+#ifdef MOOSE_MFEM_ENABLED
 
 #include "MFEMHypreAMS.h"
 
@@ -32,7 +32,6 @@ MFEMHypreAMS::validParams()
 MFEMHypreAMS::MFEMHypreAMS(const InputParameters & parameters)
   : MFEMSolverBase(parameters), _mfem_fespace(getUserObject<MFEMFESpace>("fespace"))
 {
-  mfem::Hypre::Init();
   constructSolver(parameters);
 }
 
@@ -53,6 +52,7 @@ MFEMHypreAMS::updateSolver(mfem::ParBilinearForm & a, mfem::Array<int> & tdofs)
 {
   if (_lor)
   {
+    checkSpectralEquivalence(a);
     if (_mfem_fespace.getFESpace()->GetMesh()->GetElement(0)->GetGeometryType() !=
         mfem::Geometry::Type::CUBE)
       mooseError("LOR HypreAMS Solver only supports hex meshes.");

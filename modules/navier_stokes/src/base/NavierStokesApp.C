@@ -64,8 +64,11 @@ NavierStokesApp::registerAll(Factory & f, ActionFactory & af, Syntax & syntax)
   registerSyntax("WCNSLinearFVScalarTransportPhysics",
                  "Physics/NavierStokes/ScalarTransportSegregated/*");
   registerSyntax("WCNSFVTurbulencePhysics", "Physics/NavierStokes/Turbulence/*");
+  registerSyntax("WCNSLinearFVTurbulencePhysics", "Physics/NavierStokes/TurbulenceSegregated/*");
   registerSyntax("PNSFVSolidHeatTransferPhysics", "Physics/NavierStokes/SolidHeatTransfer/*");
   registerSyntax("WCNSFVTwoPhaseMixturePhysics", "Physics/NavierStokes/TwoPhaseMixture/*");
+  registerSyntax("WCNSLinearFVTwoPhaseMixturePhysics",
+                 "Physics/NavierStokes/TwoPhaseMixtureSegregated/*");
 
   // Create the Action syntax
   registerSyntax("CNSAction", "Modules/CompressibleNavierStokes");

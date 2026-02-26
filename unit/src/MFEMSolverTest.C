@@ -1,4 +1,13 @@
-#ifdef MFEM_ENABLED
+//* This file is part of the MOOSE framework
+//* https://mooseframework.inl.gov
+//*
+//* All rights reserved, see COPYRIGHT for full restrictions
+//* https://github.com/idaholab/moose/blob/master/COPYRIGHT
+//*
+//* Licensed under LGPL 2.1, please see LICENSE for details
+//* https://www.gnu.org/licenses/lgpl-2.1.html
+
+#ifdef MOOSE_MFEM_ENABLED
 
 #include "MFEMObjectUnitTest.h"
 #include "MFEMHypreGMRES.h"
@@ -8,6 +17,7 @@
 #include "MFEMHypreADS.h"
 #include "MFEMHypreAMS.h"
 #include "MFEMSuperLU.h"
+#include "MFEMMUMPS.h"
 #include "MFEMGMRESSolver.h"
 #include "MFEMCGSolver.h"
 #include "MFEMOperatorJacobiSmoother.h"
@@ -18,11 +28,9 @@ class MFEMSolverTest : public MFEMObjectUnitTest
 public:
   MFEMSolverTest() : MFEMObjectUnitTest("MooseUnitApp") {}
 
-  static double uexact(const mfem::Vector & x)
+  static mfem::real_t uexact(const mfem::Vector & x)
   {
-    double u;
-    u = x(2) * x(2) * x(2) - 5.0 * x(0) * x(0) * x(1) * x(2);
-    return u;
+    return x(2) * x(2) * x(2) - 5.0 * x(0) * x(0) * x(1) * x(2);
   }
 
   static void gradexact(const mfem::Vector & x, mfem::Vector & grad)
@@ -33,17 +41,14 @@ public:
     grad[2] = 3.0 * x(2) * x(2) - 5.0 * x(0) * x(0) * x(1);
   }
 
-  static double d2uexact(const mfem::Vector & x) // returns \Delta u
+  static mfem::real_t d2uexact(const mfem::Vector & x) // returns \Delta u
   {
-    double d2u;
-    d2u = -10.0 * x(1) * x(2) + 6.0 * x(2);
-    return d2u;
+    return -10.0 * x(1) * x(2) + 6.0 * x(2);
   }
 
-  static double fexact(const mfem::Vector & x) // returns -\Delta u
+  static mfem::real_t fexact(const mfem::Vector & x) // returns -\Delta u
   {
-    double d2u = d2uexact(x);
-    return -d2u;
+    return -d2uexact(x);
   }
 
   // Create a simple 3D mesh for testing
@@ -274,6 +279,20 @@ TEST_F(MFEMSolverTest, MFEMSuperLU)
   MFEMSuperLU & solver = addObject<MFEMSuperLU>("MFEMSuperLU", "solver1", solver_params);
 
   testDiffusionSolve<mfem::SuperLUSolver>(solver, 1e-12);
+}
+
+/**
+ * Test MFEMMUMPS creates an mfem::MUMPSSolver successfully.
+ */
+TEST_F(MFEMSolverTest, MFEMMUMPS)
+{
+  // Build required solver inputs
+  InputParameters solver_params = _factory.getValidParams("MFEMMUMPS");
+
+  // Construct solver
+  MFEMMUMPS & solver = addObject<MFEMMUMPS>("MFEMMUMPS", "solver1", solver_params);
+
+  testDiffusionSolve<mfem::MUMPSSolver>(solver, 1e-12);
 }
 
 /**

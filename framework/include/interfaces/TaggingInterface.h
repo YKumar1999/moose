@@ -27,6 +27,13 @@ class MooseObject;
 class SubProblem;
 class Assembly;
 
+#ifdef MOOSE_KOKKOS_ENABLED
+namespace Moose::Kokkos
+{
+class ResidualObject;
+}
+#endif
+
 template <typename T>
 InputParameters validParams();
 
@@ -49,6 +56,14 @@ class TaggingInterface
 {
 public:
   TaggingInterface(const MooseObject * moose_object);
+
+#ifdef MOOSE_KOKKOS_ENABLED
+  /**
+   * Special constructor used for Kokkos functor copy during parallel dispatch
+   */
+  TaggingInterface(const TaggingInterface & object, const Moose::Kokkos::FunctorCopy & key);
+#endif
+
   virtual ~TaggingInterface();
 
   static InputParameters validParams();
@@ -61,8 +76,12 @@ public:
   {
     friend class AttribVectorTags;
     friend class NonlinearEigenSystem;
+    friend class LinearSystemContributionObject;
     template <typename>
     friend class MooseObjectTagWarehouse;
+#ifdef MOOSE_KOKKOS_ENABLED
+    friend class Moose::Kokkos::ResidualObject;
+#endif
 
     VectorTagsKey() {}
     VectorTagsKey(const VectorTagsKey &) {}
@@ -76,8 +95,12 @@ public:
   {
     friend class AttribMatrixTags;
     friend class NonlinearEigenSystem;
+    friend class LinearSystemContributionObject;
     template <typename>
     friend class MooseObjectTagWarehouse;
+#ifdef MOOSE_KOKKOS_ENABLED
+    friend class Moose::Kokkos::ResidualObject;
+#endif
 
     MatrixTagsKey() {}
     MatrixTagsKey(const MatrixTagsKey &) {}
@@ -243,6 +266,12 @@ protected:
                     const Indices & dof_indices,
                     Real scaling_factor);
 
+  template <typename Residuals, typename Indices>
+  void addResiduals(Assembly & assembly,
+                    const Residuals & residuals,
+                    const Indices & dof_indices,
+                    const std::vector<Real> & scaling_factors);
+
   /**
    * Add the provided incoming residuals corresponding to the provided dof indices
    */
@@ -270,6 +299,16 @@ protected:
                    const Residuals & residuals,
                    const Indices & dof_indices,
                    Real scaling_factor);
+
+  /**
+   * Add the provided residual derivatives into the Jacobian for the provided dof indices. This
+   * overload is meant for array variables because it takes an array of scaling factors
+   */
+  template <typename Residuals, typename Indices>
+  void addJacobian(Assembly & assembly,
+                   const Residuals & residuals,
+                   const Indices & dof_indices,
+                   const std::vector<Real> & scaling_factors);
 
   /**
    * Add the provided incoming residuals corresponding to the provided dof indices
@@ -379,7 +418,7 @@ private:
                                 const std::set<TagID> & vector_tags,
                                 const std::set<TagID> & absolute_value_vector_tags);
 
-  /// The residual tag ids this Kernel will contribute to
+  /// The vector tag ids this Kernel will contribute to
   std::set<TagID> _vector_tags;
 
   /// The absolute value residual tag ids
@@ -464,6 +503,27 @@ TaggingInterface::addResiduals(Assembly & assembly,
   }
 }
 
+template <typename Residuals, typename Indices>
+void
+TaggingInterface::addResiduals(Assembly & assembly,
+                               const Residuals & residuals,
+                               const Indices & dof_indices,
+                               const std::vector<Real> & scaling_factors)
+{
+  const auto count = scaling_factors.size();
+  mooseAssert(dof_indices.size() % count == 0,
+              "The number of dof indices should be divided cleanly by the variable count");
+  const auto nshapes = dof_indices.size() / count;
+
+  for (const auto j : make_range(count))
+    // The Residuals type may not offer operator[] (e.g. eigen vectors) but more commonly it
+    // should offer data()
+    addResiduals(assembly,
+                 Moose::makeSpan(residuals, j * nshapes, nshapes),
+                 Moose::makeSpan(dof_indices, j * nshapes, nshapes),
+                 scaling_factors[j]);
+}
+
 template <typename T, typename Indices>
 void
 TaggingInterface::addResiduals(Assembly & assembly,
@@ -517,6 +577,27 @@ TaggingInterface::addJacobian(Assembly & assembly,
 {
   assembly.cacheJacobian(
       residuals, dof_indices, scaling_factor, Assembly::LocalDataKey{}, _matrix_tags);
+}
+
+template <typename Residuals, typename Indices>
+void
+TaggingInterface::addJacobian(Assembly & assembly,
+                              const Residuals & residuals,
+                              const Indices & dof_indices,
+                              const std::vector<Real> & scaling_factors)
+{
+  const auto count = scaling_factors.size();
+  mooseAssert(dof_indices.size() % count == 0,
+              "The number of dof indices should be divided cleanly by the variable count");
+  const auto nshapes = dof_indices.size() / count;
+
+  for (const auto j : make_range(count))
+    // The Residuals type may not offer operator[] (e.g. eigen vectors) but more commonly it
+    // should offer data()
+    addJacobian(assembly,
+                Moose::makeSpan(residuals, j * nshapes, nshapes),
+                Moose::makeSpan(dof_indices, j * nshapes, nshapes),
+                scaling_factors[j]);
 }
 
 template <typename Residuals, typename Indices>

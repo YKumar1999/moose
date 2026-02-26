@@ -9,7 +9,7 @@ P_out = 101325 # Pa
     n_cells = 60
     pitch = 0.014605
     pin_diameter = 0.012065
-    gap = 0.0015875
+    side_gap = 0.0015875
     unheated_length_entry = 0.3048
     heated_length = 1.2192
     spacer_z = '0.0'
@@ -35,6 +35,13 @@ P_out = 101325 # Pa
   compute_viscosity = true
   compute_power = false
   P_out = ${P_out}
+  friction_closure = 'MATRA'
+[]
+
+[SCMClosures]
+  [MATRA]
+    type = SCMFrictionMATRA
+  []
 []
 
 [ICs]

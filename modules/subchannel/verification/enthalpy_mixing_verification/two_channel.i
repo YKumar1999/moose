@@ -9,7 +9,7 @@ P_out = 155e+5 # Pa
     n_cells = 100
     pitch = 0.0126
     pin_diameter = 0.00950
-    gap = 0.00095
+    side_gap = 0.00095
     heated_length = 10.0
     spacer_z = '0.0'
     spacer_k = '0.0'
@@ -19,7 +19,7 @@ P_out = 155e+5 # Pa
 [Functions]
   [T_fn]
     type = ParsedFunction
-    value = if(x>0.0,483.10,473.10)
+    expression = if(x>0.0,483.10,473.10)
   []
 []
 
@@ -41,6 +41,13 @@ P_out = 155e+5 # Pa
   compute_viscosity = true
   compute_power = true
   P_out = ${P_out}
+  friction_closure = 'MATRA'
+[]
+
+[SCMClosures]
+  [MATRA]
+    type = SCMFrictionMATRA
+  []
 []
 
 [ICs]

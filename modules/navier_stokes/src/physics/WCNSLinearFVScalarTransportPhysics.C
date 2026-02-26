@@ -25,8 +25,9 @@ WCNSLinearFVScalarTransportPhysics::validParams()
                         "If the nonorthogonal correction should be used when computing the normal "
                         "gradient, notably in the diffusion term.");
 
-  // Not needed
-  params.suppressParameter<bool>("add_scalar_equation");
+  // Not supported
+  params.suppressParameter<MooseEnum>("preconditioning");
+
   return params;
 }
 
@@ -119,7 +120,8 @@ WCNSLinearFVScalarTransportPhysics::addScalarDiffusionKernels()
     for (const auto name_i : index_range(_passive_scalar_names))
     {
       params.set<LinearVariableName>("variable") = _passive_scalar_names[name_i];
-      params.set<MooseFunctorName>("diffusion_coeff") = passive_scalar_diffusivities[name_i];
+      params.set<MooseFunctorName>("diffusion_coeff") =
+          passive_scalar_diffusivities[name_i] + (_has_turbulence_model ? "_plus_mut/Sc_t" : "");
       getProblem().addLinearFVKernel(
           kernel_type, prefix() + "ins_" + _passive_scalar_names[name_i] + "_diffusion", params);
     }
@@ -141,7 +143,7 @@ WCNSLinearFVScalarTransportPhysics::addScalarSourceKernels()
     {
       // Added for backward compatibility with former Modules/NavierStokesFV syntax
       params.set<MooseFunctorName>("source_density") = _passive_scalar_sources[scalar_i];
-      getProblem().addFVKernel(
+      getProblem().addLinearFVKernel(
           kernel_type, prefix() + "ins_" + _passive_scalar_names[scalar_i] + "_source", params);
     }
 

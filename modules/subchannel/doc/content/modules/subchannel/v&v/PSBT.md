@@ -7,7 +7,7 @@ The PSBT 5x5 benchmark is an international benchmark developed by the Organisati
 
 | Item | Value |
 | - | - |
-| Rods array | $5\times5$ |
+| Fuel-pin array | $5\times5$ |
 | Number of heated pins | $25$ |
 | Heated pin outer diameter (mm) | $9.50$ |
 | Pitch (mm) | $12.60$ |
@@ -47,4 +47,4 @@ This illustrates the fact that modeling parameters like $\beta$ should ideally b
 
 ## Input file for case: 01-5237
 
-!listing /validation/psbt/psbt_ss/psbt.i language=cpp
+!listing /validation/psbt/psbt_ss/psbt.i language=moose

@@ -11,7 +11,7 @@ heated_length = 1.0
     n_cells = 25
     pitch = 0.0126
     pin_diameter = 0.00950
-    gap = 0.00095
+    side_gap = 0.00095
     heated_length = ${heated_length}
     spacer_z = '0.0'
     spacer_k = '0.0'
@@ -98,6 +98,13 @@ heated_length = 1.0
     P_out = ${P_out}
     verbose_subchannel = true
     deformation = true
+  friction_closure = 'MATRA'
+[]
+
+[SCMClosures]
+  [MATRA]
+    type = SCMFrictionMATRA
+  []
 []
 
 [ICs]

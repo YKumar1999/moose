@@ -7,29 +7,13 @@
 //* Licensed under LGPL 2.1, please see LICENSE for details
 //* https://www.gnu.org/licenses/lgpl-2.1.html
 
-#ifdef MFEM_ENABLED
+#ifdef MOOSE_MFEM_ENABLED
 
 #pragma once
-#include <map>
-#include "libmesh/ignore_warnings.h"
-#include "mfem/miniapps/common/pfem_extras.hpp"
-#include "libmesh/restore_warnings.h"
+
 #include "ExternalProblem.h"
 #include "MFEMProblemData.h"
 #include "MFEMMesh.h"
-#include "MFEMFunctorMaterial.h"
-#include "MFEMSubMesh.h"
-#include "MFEMVariable.h"
-#include "MFEMBoundaryCondition.h"
-#include "MFEMKernel.h"
-#include "MFEMMixedBilinearFormKernel.h"
-#include "MFEMExecutioner.h"
-#include "MFEMDataCollection.h"
-#include "MFEMFESpace.h"
-#include "MFEMSolverBase.h"
-#include "Function.h"
-#include "MooseEnum.h"
-#include "libmesh/string_to_enum.h"
 
 class MFEMProblem : public ExternalProblem
 {
@@ -41,7 +25,6 @@ public:
 
   virtual void initialSetup() override;
   virtual void externalSolve() override {}
-  virtual bool nlConverged(const unsigned int) override { return true; }
   virtual void syncSolutions(Direction) override {}
 
   /**
@@ -87,10 +70,8 @@ public:
   void setMesh();
 
   /**
-   * Initialise the required ProblemOperator used in the Executioner to solve the problem.
+   * Add an MFEM SubMesh to the problem.
    */
-  void initProblemOperator();
-
   void addSubMesh(const std::string & user_object_name,
                   const std::string & name,
                   InputParameters & parameters);
@@ -135,6 +116,34 @@ public:
                  InputParameters & parameters) override;
 
   /**
+   * Adds a real component kernel to the parent MFEMComplexKernel.
+   */
+  void addRealComponentToKernel(const std::string & kernel_name,
+                                const std::string & name,
+                                InputParameters & parameters);
+
+  /**
+   * Adds an imaginary component kernel to the parent MFEMComplexKernel.
+   */
+  void addImagComponentToKernel(const std::string & kernel_name,
+                                const std::string & name,
+                                InputParameters & parameters);
+
+  /**
+   * Adds a real component BC to the parent MFEMComplexIntegratedBC.
+   */
+  void addRealComponentToBC(const std::string & kernel_name,
+                            const std::string & name,
+                            InputParameters & parameters);
+
+  /**
+   * Adds an imaginary component BC to the parent MFEMComplexIntegratedBC.
+   */
+  void addImagComponentToBC(const std::string & kernel_name,
+                            const std::string & name,
+                            InputParameters & parameters);
+
+  /**
    * Override of ExternalProblem::addAuxKernel. Uses ExternalProblem::addAuxKernel to create a
    * MFEMGeneralUserObject representing the kernel in MOOSE, and creates corresponding MFEM kernel
    * to be used in the MFEM solve.
@@ -151,6 +160,10 @@ public:
   void addFunction(const std::string & type,
                    const std::string & name,
                    InputParameters & parameters) override;
+
+  void addInitialCondition(const std::string & ic_name,
+                           const std::string & name,
+                           InputParameters & parameters) override;
 
   /**
    * Override of ExternalProblem::addPostprocessor. In addition to
@@ -200,6 +213,26 @@ public:
    * current data specifying the FE problem.
    */
   MFEMProblemData & getProblemData() { return _problem_data; }
+  const MFEMProblemData & getProblemData() const { return _problem_data; }
+
+  /**
+   * Return the MPI communicator associated with this FE problem's mesh.
+   */
+  MPI_Comm getComm() { return getProblemData().comm; }
+
+  /**
+   * Return the ParMesh associated with a particular variable.
+   */
+  const mfem::ParMesh & getMFEMVariableMesh(std::string var_name)
+  {
+    if (_problem_data.gridfunctions.Has(var_name))
+      return *_problem_data.gridfunctions.Get(var_name)->ParFESpace()->GetParMesh();
+    else if (_problem_data.cmplx_gridfunctions.Has(var_name))
+      return *_problem_data.cmplx_gridfunctions.Get(var_name)->ParFESpace()->GetParMesh();
+    else
+      mooseError("Variable " + var_name +
+                 " not found in MFEMProblem real or complex gridfunctions.");
+  }
 
   /**
    * Displace the mesh, if mesh displacement is enabled.
@@ -211,6 +244,23 @@ public:
    */
   std::optional<std::reference_wrapper<mfem::ParGridFunction const>>
   getMeshDisplacementGridFunction();
+
+  Moose::FEBackend feBackend() const override { return Moose::FEBackend::MFEM; }
+
+  std::string solverTypeString(unsigned int solver_sys_num) override;
+
+  /**
+   * @returns a shared pointer to an MFEM parallel grid function
+   */
+  std::shared_ptr<mfem::ParGridFunction> getGridFunction(const std::string & name);
+
+  enum class NumericType
+  {
+    REAL,
+    COMPLEX
+  };
+
+  NumericType num_type;
 
 protected:
   MFEMProblemData _problem_data;

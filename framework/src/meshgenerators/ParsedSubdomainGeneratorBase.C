@@ -26,13 +26,17 @@ ParsedSubdomainGeneratorBase::validParams()
       "expression", "Parsed expression to determine the subdomain id of each involved element");
   params.addParam<std::vector<SubdomainName>>(
       "excluded_subdomains",
-      "A set of subdomain names that will not changed even if "
-      "they are inside/outside the combinatorial geometry");
+      "A set of subdomain names that will be immune to change if set. This cannot be used together "
+      "with included_subdomains.");
   params.addDeprecatedParam<std::vector<subdomain_id_type>>(
       "excluded_subdomain_ids",
       "A set of subdomain ids that will not changed even if "
       "they are inside/outside the combinatorial geometry",
       "excluded_subdomain_ids is deprecated, use excluded_subdomains (ids or names accepted)");
+  params.addParam<std::vector<SubdomainName>>(
+      "included_subdomains",
+      "A set of subdomain names that will only be subjected to change if set. This cannot be used "
+      "together with excluded_subdomains.");
   params.addParam<std::vector<std::string>>(
       "constant_names", {}, "Vector of constants used in the parsed function");
   params.addParam<std::vector<std::string>>(
@@ -57,6 +61,11 @@ ParsedSubdomainGeneratorBase::ParsedSubdomainGeneratorBase(const InputParameters
                       : std::vector<subdomain_id_type>()),
     _eeid_names(getParam<std::vector<ExtraElementIDName>>("extra_element_id_names"))
 {
+  if ((isParamValid("excluded_subdomains") || isParamValid("excluded_subdomain_ids")) &&
+      (isParamValid("included_subdomains")))
+    paramError("excluded_subdomains",
+               "You cannot use both excluded_subdomains and included_subdomains at the same time.");
+
   functionInitialize(_function);
 }
 
@@ -80,6 +89,26 @@ ParsedSubdomainGeneratorBase::generate()
 
     _excluded_ids = MooseMeshUtils::getSubdomainIDs(*mesh, excluded_subdomains);
   }
+  else if (isParamValid("included_subdomains"))
+  {
+    auto included_subdomains = parameters().get<std::vector<SubdomainName>>("included_subdomains");
+
+    // check that the subdomains exist in the mesh
+    for (const auto & name : included_subdomains)
+      if (!MooseMeshUtils::hasSubdomainName(*mesh, name))
+        paramError("included_subdomains", "The block '", name, "' was not found in the mesh");
+
+    auto included_ids = MooseMeshUtils::getSubdomainIDs(*mesh, included_subdomains);
+
+    // collect all subdomain ids in the mesh
+    std::set<subdomain_id_type> mesh_sids;
+    mesh->subdomain_ids(mesh_sids);
+
+    // set excluded ids to all mesh sids that are not in included ids
+    for (const auto & sid : mesh_sids)
+      if (std::find(included_ids.begin(), included_ids.end(), sid) == included_ids.end())
+        _excluded_ids.push_back(sid);
+  }
 
   // Loop over the elements
   for (const auto & elem : mesh->active_element_ptr_range())
@@ -88,39 +117,26 @@ ParsedSubdomainGeneratorBase::generate()
   // Assign block name, if applicable
   setBlockName(mesh);
 
-  mesh->set_isnt_prepared();
+  mesh->unset_is_prepared();
   return dynamic_pointer_cast<MeshBase>(mesh);
 }
 
 void
 ParsedSubdomainGeneratorBase::functionInitialize(const std::string & function_expression)
 {
-  // base function object
-  _func_F = std::make_shared<SymFunction>();
-
-  // set FParser internal feature flags
-  setParserFeatureFlags(_func_F);
-
-  // add the constant expressions
-  addFParserConstants(_func_F,
-                      getParam<std::vector<std::string>>("constant_names"),
-                      getParam<std::vector<std::string>>("constant_expressions"));
-
   // add the extra element integers
   std::string symbol_str = "x,y,z";
   for (const auto & eeid_name : _eeid_names)
     symbol_str += "," + eeid_name;
 
-  // parse function
-  if (_func_F->Parse(function_expression, symbol_str) >= 0)
-    mooseError("Invalid function\n",
-               function_expression,
-               "\nin ",
-               type(),
-               " ",
-               name(),
-               ".\n",
-               _func_F->ErrorMsg());
+  // Create parsed function
+  _func_F = std::make_shared<SymFunction>();
+  parsedFunctionSetup(_func_F,
+                      function_expression,
+                      symbol_str,
+                      getParam<std::vector<std::string>>("constant_names"),
+                      getParam<std::vector<std::string>>("constant_expressions"),
+                      comm());
 
   _func_params.resize(3 + _eeid_names.size());
 }

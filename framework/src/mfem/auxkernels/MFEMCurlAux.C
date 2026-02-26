@@ -7,16 +7,13 @@
 //* Licensed under LGPL 2.1, please see LICENSE for details
 //* https://www.gnu.org/licenses/lgpl-2.1.html
 
-#ifdef MFEM_ENABLED
+#ifdef MOOSE_MFEM_ENABLED
 
 #include "MFEMCurlAux.h"
 #include "MFEMProblem.h"
 
 registerMooseObject("MooseApp", MFEMCurlAux);
 
-/*
-Class to set an H(div) auxvariable to be the curl of a H(curl) vector variable.
-*/
 InputParameters
 MFEMCurlAux::validParams()
 {
@@ -45,8 +42,7 @@ MFEMCurlAux::MFEMCurlAux(const InputParameters & parameters)
 void
 MFEMCurlAux::execute()
 {
-  _result_var = 0.0;
-  _curl.AddMult(_source_var, _result_var, _scale_factor);
+  _curl.AddMult(_source_var, _result_var = 0, _scale_factor);
 }
 
 #endif

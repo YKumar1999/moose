@@ -7,7 +7,7 @@
 //* Licensed under LGPL 2.1, please see LICENSE for details
 //* https://www.gnu.org/licenses/lgpl-2.1.html
 
-#ifdef MFEM_ENABLED
+#ifdef MOOSE_MFEM_ENABLED
 
 #include "AddMFEMSubMeshAction.h"
 
@@ -17,7 +17,7 @@ InputParameters
 AddMFEMSubMeshAction::validParams()
 {
   InputParameters params = MooseObjectAction::validParams();
-  params.addClassDescription("Add a MFEM SubMesh object to the simulation.");
+  params.addClassDescription("Add an MFEM SubMesh object to the simulation.");
   return params;
 }
 

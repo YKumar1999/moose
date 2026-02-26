@@ -359,6 +359,11 @@ public:
   virtual const SystemBase & systemBaseLinear(const unsigned int sys_num) const = 0;
   virtual SystemBase & systemBaseLinear(const unsigned int sys_num) = 0;
   /**
+   * Return the solver system object as a base class reference given the system number
+   */
+  virtual const SystemBase & systemBaseSolver(const unsigned int sys_num) const = 0;
+  virtual SystemBase & systemBaseSolver(const unsigned int sys_num) = 0;
+  /**
    * Return the auxiliary system object as a base class reference
    */
   virtual const SystemBase & systemBaseAuxiliary() const = 0;
@@ -916,7 +921,9 @@ public:
   virtual void jacobianSetup();
 
   /// Setter for debug functor output
-  void setFunctorOutput(bool set_output) { _output_functors = set_output; }
+  void setFunctorOutput(bool set_output) { _show_functors = set_output; }
+  /// Setter for debug chain control data output
+  void setChainControlDataOutput(bool set_output) { _show_chain_control_data = set_output; }
 
   /**
    * @return the number of nonlinear systems in the problem
@@ -1156,7 +1163,10 @@ private:
   std::vector<std::multimap<std::string, std::pair<bool, bool>>> _functor_to_request_info;
 
   /// Whether to output a list of the functors used and requested (currently only at initialSetup)
-  bool _output_functors;
+  bool _show_functors;
+
+  /// Whether to output a list of all the chain control data
+  bool _show_chain_control_data;
 
   /// The declared vector tags
   std::vector<VectorTag> _vector_tags;
@@ -1401,9 +1411,9 @@ SubProblem::addFunctor(const std::string & name,
       {
         auto & [requested_functor_is_ad, requestor_is_ad] = request_info_it->second;
         if (!requested_functor_is_ad && requestor_is_ad && added_functor_is_ad)
-          mooseError("We are requesting a non-AD functor from an AD object, but the true functor "
-                     "is AD. This means we could be dropping important derivatives. We will not "
-                     "allow this");
+          mooseError("We are requesting a non-AD functor '" + name +
+                     "' from an AD object, but the true functor is AD. This means we could be "
+                     "dropping important derivatives. We will not allow this");
         // We're going to eventually check whether we've fulfilled all functor requests and our
         // check will be that the multimap is empty. This request is fulfilled, so erase it from the
         // map now

@@ -90,6 +90,12 @@ StochasticToolsApp::registerAll(Factory & f, ActionFactory & af, Syntax & syntax
   registerMooseObjectTask("add_likelihood", LikelihoodFunctionBase, false);
   addTaskDependency("add_likelihood", "add_user_object");
   addTaskDependency("add_distribution", "add_likelihood");
+  // Parallel acquisition (active learning)
+  registerSyntaxTask(
+      "AddParallelAcquisitionAction", "ParallelAcquisition/*", "add_parallelacquisition");
+  registerMooseObjectTask("add_parallelacquisition", ParallelAcquisitionFunctionBase, false);
+  addTaskDependency("add_parallelacquisition", "add_user_object");
+  addTaskDependency("add_distribution", "add_parallelacquisition");
 
   registerSyntaxTask("AdaptiveSamplerAction", "Samplers", "add_user_object");
   registerSyntaxTask("AdaptiveSamplerAction", "Samplers", "add_postprocessor");
@@ -106,12 +112,12 @@ StochasticToolsApp::registerApps()
 
 void
 StochasticToolsApp::requiresTorch(const MooseObject &
-#ifndef LIBTORCH_ENABLED
+#ifndef MOOSE_LIBTORCH_ENABLED
                                       obj
 #endif
 )
 {
-#ifndef LIBTORCH_ENABLED
+#ifndef MOOSE_LIBTORCH_ENABLED
   obj.mooseError("PyTorch C++ API (libtorch) must be installed to use this object, see "
                  "https://mooseframework.inl.gov/modules/stochastic_tools/install_pytorch.html for "
                  "instruction.");

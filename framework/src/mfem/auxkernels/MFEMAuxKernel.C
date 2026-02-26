@@ -7,7 +7,7 @@
 //* Licensed under LGPL 2.1, please see LICENSE for details
 //* https://www.gnu.org/licenses/lgpl-2.1.html
 
-#ifdef MFEM_ENABLED
+#ifdef MOOSE_MFEM_ENABLED
 
 #include "MFEMAuxKernel.h"
 #include "MFEMProblem.h"
@@ -29,7 +29,6 @@ MFEMAuxKernel::MFEMAuxKernel(const InputParameters & parameters)
     _result_var_name(getParam<AuxVariableName>("variable")),
     _result_var(*getMFEMProblem().getProblemData().gridfunctions.Get(_result_var_name))
 {
-  _result_var = 0.0;
 }
 
 #endif

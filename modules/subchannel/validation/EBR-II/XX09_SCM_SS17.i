@@ -36,8 +36,6 @@ unheated_length_exit = '${fparse 26.9*scale_factor}'
     pitch = ${fuel_pin_pitch}
     dwire = ${wire_diameter}
     hwire = ${wire_z_spacing}
-    spacer_z = '0.0'
-    spacer_k = '0.0'
   []
 
   [fuel_pins]
@@ -65,9 +63,9 @@ unheated_length_exit = '${fparse 26.9*scale_factor}'
 [Functions]
   [axial_heat_rate]
     type = ParsedFunction
-    value = '(pi/2)*sin(pi*z/L)*exp(-alpha*z)/(1.0/alpha*(1.0 - exp(-alpha*L)))*L'
-    vars = 'L alpha'
-    vals = '${heated_length} 1.8012'
+    expression = '(pi/2)*sin(pi*z/L)*exp(-alpha*z)/(1.0/alpha*(1.0 - exp(-alpha*L)))*L'
+    symbol_names = 'L alpha'
+    symbol_values = '${heated_length} 1.8012'
   []
 []
 
@@ -105,6 +103,9 @@ unheated_length_exit = '${fparse 26.9*scale_factor}'
   [displacement]
     block = subchannel
   []
+  [ff]
+    block = subchannel
+  []
   [q_prime]
     block = fuel_pins
   []
@@ -114,7 +115,7 @@ unheated_length_exit = '${fparse 26.9*scale_factor}'
   [Dpin]
     block = fuel_pins
   []
-  [q_prime_duct]
+  [duct_heat_flux]
     block = duct
   []
   [Tduct]
@@ -142,6 +143,21 @@ unheated_length_exit = '${fparse 26.9*scale_factor}'
   implicit = true
   segregated = false
   interpolation_scheme = 'upwind'
+  verbose_subchannel = true
+  # Heat Transfer Correlations
+  pin_HTC_closure = 'gnielinski'
+  duct_HTC_closure = 'gnielinski'
+  # friction model
+  friction_closure = 'cheng'
+[]
+
+[SCMClosures]
+  [cheng]
+    type = SCMFrictionUpdatedChengTodreas
+  []
+  [gnielinski]
+    type = SCMHTCGnielinski
+  []
 []
 
 [ICs]
@@ -159,7 +175,7 @@ unheated_length_exit = '${fparse 26.9*scale_factor}'
     type = SCMTriPowerIC
     variable = q_prime
     power = ${Power_initial}
-    filename = "pin_power_profile61.txt"
+    filename = "pin_power_profile61_uniform.txt"
     axial_heat_rate = axial_heat_rate
   []
 
@@ -238,7 +254,6 @@ unheated_length_exit = '${fparse 26.9*scale_factor}'
 []
 
 [Outputs]
-  exodus = true
   csv = true
 []
 
@@ -306,69 +321,69 @@ unheated_length_exit = '${fparse 26.9*scale_factor}'
     execute_on = 'TIMESTEP_END'
     height = 0.322
   []
-  # [MTC-20]
-  # type = SubChannelPointValue
-  # variable = T
-  # index = 33
-  # execute_on = 'TIMESTEP_END'
-  # height = 0.172
-  # []
-  # [MTC-22]
-  #   type = SubChannelPointValue
-  #   variable = T
-  #   index = 3
-  #   execute_on = 'TIMESTEP_END'
-  #   height = 0.172
-  # []
-  # [MTC-24]
-  #   type = SubChannelPointValue
-  #   variable = T
-  #   index = 28
-  #   execute_on = 'TIMESTEP_END'
-  #   height = 0.172
-  # []
-  # [MTC-25]
-  #   type = SubChannelPointValue
-  #   variable = T
-  #   index = 60
-  #   execute_on = 'TIMESTEP_END'
-  #   height = 0.172
-  # []
-  # [MTC-26]
-  #   type = SubChannelPointValue
-  #   variable = T
-  #   index = 106
-  #   execute_on = 'TIMESTEP_END'
-  #   height = 0.172
-  # []
-  # [14TC-37]
-  #   type = SubChannelPointValue
-  #   variable = T
-  #   index = 52
-  #   execute_on = 'TIMESTEP_END'
-  #   height = 0.480
-  # []
-  # [14TC-39]
-  #   type = SubChannelPointValue
-  #   variable = T
-  #   index = 6
-  #   execute_on = 'TIMESTEP_END'
-  #   height = 0.480
-  # []
-  # [14TC-41]
-  #   type = SubChannelPointValue
-  #   variable = T
-  #   index = 40
-  #   execute_on = 'TIMESTEP_END'
-  #   height = 0.480
-  # []
-  # [14TC-43]
-  #   type = SubChannelPointValue
-  #   variable = T
-  #   index = 105
-  #   execute_on = 'TIMESTEP_END'
-  #   height = 0.480
-  # []
+  [MTC-20]
+  type = SubChannelPointValue
+  variable = T
+  index = 33
+  execute_on = 'TIMESTEP_END'
+  height = 0.172
+  []
+  [MTC-22]
+    type = SubChannelPointValue
+    variable = T
+    index = 3
+    execute_on = 'TIMESTEP_END'
+    height = 0.172
+  []
+  [MTC-24]
+    type = SubChannelPointValue
+    variable = T
+    index = 28
+    execute_on = 'TIMESTEP_END'
+    height = 0.172
+  []
+  [MTC-25]
+    type = SubChannelPointValue
+    variable = T
+    index = 60
+    execute_on = 'TIMESTEP_END'
+    height = 0.172
+  []
+  [MTC-26]
+    type = SubChannelPointValue
+    variable = T
+    index = 106
+    execute_on = 'TIMESTEP_END'
+    height = 0.172
+  []
+  [14TC-37]
+    type = SubChannelPointValue
+    variable = T
+    index = 52
+    execute_on = 'TIMESTEP_END'
+    height = 0.480
+  []
+  [14TC-39]
+    type = SubChannelPointValue
+    variable = T
+    index = 6
+    execute_on = 'TIMESTEP_END'
+    height = 0.480
+  []
+  [14TC-41]
+    type = SubChannelPointValue
+    variable = T
+    index = 40
+    execute_on = 'TIMESTEP_END'
+    height = 0.480
+  []
+  [14TC-43]
+    type = SubChannelPointValue
+    variable = T
+    index = 105
+    execute_on = 'TIMESTEP_END'
+    height = 0.480
+  []
 []
 
 [Executioner]

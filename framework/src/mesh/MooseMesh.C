@@ -7,6 +7,7 @@
 //* Licensed under LGPL 2.1, please see LICENSE for details
 //* https://www.gnu.org/licenses/lgpl-2.1.html
 
+#include "MooseError.h"
 #include "MooseMesh.h"
 #include "Factory.h"
 #include "CacheChangedListsThread.h"
@@ -36,9 +37,7 @@
 #include "libmesh/periodic_boundary_base.h"
 #include "libmesh/fe_base.h"
 #include "libmesh/fe_interface.h"
-#include "libmesh/mesh_inserter_iterator.h"
 #include "libmesh/mesh_communication.h"
-#include "libmesh/mesh_inserter_iterator.h"
 #include "libmesh/mesh_tools.h"
 #include "libmesh/parallel.h"
 #include "libmesh/parallel_elem.h"
@@ -62,6 +61,7 @@
 #include "libmesh/ghost_point_neighbors.h"
 #include "libmesh/fe_type.h"
 #include "libmesh/enum_to_string.h"
+#include "libmesh/elem_side_builder.h"
 
 static const int GRAIN_SIZE =
     1; // the grain_size does not have much influence on our execution speed
@@ -97,13 +97,6 @@ MooseMesh::validParams()
       true,
       "If allow_renumbering=false, node and element numbers are kept fixed until deletion");
 
-  // TODO: this parameter does not belong here, it's only for FileMesh
-  params.addParam<bool>("nemesis",
-                        false,
-                        "If nemesis=true and file=foo.e, actually reads "
-                        "foo.e.N.0, foo.e.N.1, ... foo.e.N.N-1, "
-                        "where N = # CPUs, with NemesisIO.");
-
   params.addParam<MooseEnum>(
       "partitioner",
       partitioning(),
@@ -134,7 +127,13 @@ MooseMesh::validParams()
   params.addParam<bool>(
       "construct_node_list_from_side_list",
       true,
-      "Whether or not to generate nodesets from the sidesets (usually a good idea).");
+      "Whether or not to generate nodesets from the sidesets (currently often required).");
+  params.addParam<bool>(
+      "displace_node_list_by_side_list",
+      true,
+      "Whether to renumber existing nodesets with ids matching sidesets that "
+      "lack names matching sidesets, when constructing nodesets from sidesets via the default "
+      "'construct_node_list_from_side_list' option, rather than to merge them with the sideset.");
   params.addParam<unsigned int>(
       "patch_size", 40, "The number of nodes to consider in the NearestNode neighborhood.");
   params.addParam<unsigned int>("ghosting_patch_size",
@@ -212,11 +211,11 @@ MooseMesh::validParams()
 
   // groups
   params.addParamNamesToGroup("patch_update_strategy patch_size max_leaf_size", "Geometric search");
-  params.addParamNamesToGroup("nemesis", "Advanced");
   params.addParamNamesToGroup("add_subdomain_ids add_subdomain_names add_sideset_ids "
                               "add_sideset_names add_nodeset_ids add_nodeset_names",
                               "Pre-declaration of future mesh sub-entities");
-  params.addParamNamesToGroup("construct_node_list_from_side_list build_all_side_lowerd_mesh",
+  params.addParamNamesToGroup("construct_node_list_from_side_list build_all_side_lowerd_mesh "
+                              "displace_node_list_by_side_list",
                               "Automatic definition of mesh element sides entities");
   params.addParamNamesToGroup("partitioner centroid_partitioner_direction", "Partitioning");
 
@@ -238,7 +237,7 @@ MooseMesh::MooseMesh(const InputParameters & parameters)
     _uniform_refine_level(0),
     _skip_refine_when_use_split(getParam<bool>("skip_refine_when_use_split")),
     _skip_deletion_repartition_after_refine(false),
-    _is_nemesis(getParam<bool>("nemesis")),
+    _is_nemesis(false),
     _node_to_elem_map_built(false),
     _node_to_active_semilocal_elem_map_built(false),
     _patch_size(getParam<unsigned int>("patch_size")),
@@ -250,9 +249,9 @@ MooseMesh::MooseMesh(const InputParameters & parameters)
         getParam<MooseEnum>("patch_update_strategy").getEnum<Moose::PatchUpdateType>()),
     _regular_orthogonal_mesh(false),
     _is_split(getParam<bool>("_is_split")),
-    _has_lower_d(false),
     _allow_recovery(true),
     _construct_node_list_from_side_list(getParam<bool>("construct_node_list_from_side_list")),
+    _displace_node_list_by_side_list(getParam<bool>("displace_node_list_by_side_list")),
     _need_delete(false),
     _allow_remote_element_removal(true),
     _need_ghost_ghosted_boundaries(true),
@@ -284,6 +283,11 @@ MooseMesh::MooseMesh(const InputParameters & parameters)
     allowRemoteElementRemoval(false);
 
   determineUseDistributedMesh();
+
+#ifdef MOOSE_KOKKOS_ENABLED
+  if (_app.isKokkosAvailable())
+    _kokkos_mesh = std::make_unique<Moose::Kokkos::Mesh>(*this);
+#endif
 }
 
 MooseMesh::MooseMesh(const MooseMesh & other_mesh)
@@ -302,7 +306,7 @@ MooseMesh::MooseMesh(const MooseMesh & other_mesh)
     _uniform_refine_level(other_mesh.uniformRefineLevel()),
     _skip_refine_when_use_split(other_mesh._skip_refine_when_use_split),
     _skip_deletion_repartition_after_refine(other_mesh._skip_deletion_repartition_after_refine),
-    _is_nemesis(false),
+    _is_nemesis(other_mesh._is_nemesis),
     _node_to_elem_map_built(false),
     _node_to_active_semilocal_elem_map_built(false),
     _patch_size(other_mesh._patch_size),
@@ -313,9 +317,9 @@ MooseMesh::MooseMesh(const MooseMesh & other_mesh)
     _is_split(other_mesh._is_split),
     _lower_d_interior_blocks(other_mesh._lower_d_interior_blocks),
     _lower_d_boundary_blocks(other_mesh._lower_d_boundary_blocks),
-    _has_lower_d(other_mesh._has_lower_d),
     _allow_recovery(other_mesh._allow_recovery),
     _construct_node_list_from_side_list(other_mesh._construct_node_list_from_side_list),
+    _displace_node_list_by_side_list(other_mesh._displace_node_list_by_side_list),
     _need_delete(other_mesh._need_delete),
     _allow_remote_element_removal(other_mesh._allow_remote_element_removal),
     _need_ghost_ghosted_boundaries(other_mesh._need_ghost_ghosted_boundaries),
@@ -362,6 +366,11 @@ MooseMesh::MooseMesh(const MooseMesh & other_mesh)
   }
 
   updateCoordTransform();
+
+#ifdef MOOSE_KOKKOS_ENABLED
+  if (_app.isKokkosAvailable())
+    _kokkos_mesh = std::make_unique<Moose::Kokkos::Mesh>(*this);
+#endif
 }
 
 MooseMesh::~MooseMesh()
@@ -387,6 +396,7 @@ MooseMesh::freeBndNodes()
     it.second.clear();
 
   _bnd_node_ids.clear();
+  _bnd_node_range.reset();
 }
 
 void
@@ -400,6 +410,7 @@ MooseMesh::freeBndElems()
     it.second.clear();
 
   _bnd_elem_ids.clear();
+  _bnd_elem_range.reset();
 }
 
 bool
@@ -647,6 +658,14 @@ MooseMesh::update()
 
   // the flag might have been set by calling doingPRefinement(true)
   _doing_p_refinement = _doing_p_refinement || (_max_p_level > 0);
+
+  computeMaxPerElemAndSide();
+
+#ifdef MOOSE_KOKKOS_ENABLED
+  if (_app.getExecutioner() && _app.feProblem().initialized() &&
+      _app.feProblem().hasKokkosObjects())
+    _kokkos_mesh->update();
+#endif
 
   _finite_volume_info_dirty = true;
 }
@@ -1053,6 +1072,29 @@ MooseMesh::buildNodeList()
 }
 
 void
+MooseMesh::computeMaxPerElemAndSide()
+{
+  auto & mesh = getMesh();
+
+  _max_sides_per_elem = 0;
+  _max_nodes_per_elem = 0;
+  _max_nodes_per_side = 0;
+
+  for (auto & elem : as_range(mesh.local_elements_begin(), mesh.local_elements_end()))
+  {
+    _max_sides_per_elem = std::max(_max_sides_per_elem, elem->n_sides());
+    _max_nodes_per_elem = std::max(_max_nodes_per_elem, elem->n_nodes());
+
+    for (unsigned int side = 0; side < elem->n_sides(); ++side)
+      _max_nodes_per_side = std::max(_max_nodes_per_side, elem->side_ptr(side)->n_nodes());
+  }
+
+  mesh.comm().max(_max_sides_per_elem);
+  mesh.comm().max(_max_nodes_per_elem);
+  mesh.comm().max(_max_nodes_per_side);
+}
+
+void
 MooseMesh::buildElemIDInfo()
 {
   unsigned int n = getMesh().n_elem_integers() + 1;
@@ -1405,7 +1447,6 @@ MooseMesh::cacheInfo()
 {
   TIME_SECTION("cacheInfo", 3);
 
-  _has_lower_d = false;
   _sub_to_data.clear();
   _neighbor_subdomain_boundary_ids.clear();
   _block_node_list.clear();
@@ -1416,15 +1457,13 @@ MooseMesh::cacheInfo()
 
   auto & mesh = getMesh();
 
-  // TODO: Thread this!
+  // Cache higher and lowerD element information
   for (const auto & elem : mesh.element_ptr_range())
   {
     const Elem * ip_elem = elem->interior_parent();
 
     if (ip_elem)
     {
-      if (elem->active())
-        _sub_to_data[elem->subdomain_id()].is_lower_d = true;
       unsigned int ip_side = ip_elem->which_side_am_i(elem);
 
       // For some grid sequencing tests: ip_side == libMesh::invalid_uint
@@ -1459,13 +1498,15 @@ MooseMesh::cacheInfo()
   _communicator.set_union(_lower_d_interior_blocks);
   _communicator.set_union(_lower_d_boundary_blocks);
 
+  // Cache the boundaries next to each subdomain
   for (const auto & elem : mesh.active_local_element_ptr_range())
   {
     SubdomainID subdomain_id = elem->subdomain_id();
     auto & sub_data = _sub_to_data[subdomain_id];
+    const auto elem_boundary_ids = getBoundaryIDs(elem);
     for (unsigned int side = 0; side < elem->n_sides(); side++)
     {
-      std::vector<BoundaryID> boundary_ids = getBoundaryIDs(elem, side);
+      const auto & boundary_ids = elem_boundary_ids[side];
       sub_data.boundary_ids.insert(boundary_ids.begin(), boundary_ids.end());
 
       Elem * neig = elem->neighbor_ptr(side);
@@ -1485,9 +1526,6 @@ MooseMesh::cacheInfo()
     auto & sub_data = _sub_to_data[blk_id];
     _communicator.set_union(sub_data.neighbor_subs);
     _communicator.set_union(sub_data.boundary_ids);
-    _communicator.max(sub_data.is_lower_d);
-    if (sub_data.is_lower_d)
-      _has_lower_d = true;
     _communicator.set_union(_neighbor_subdomain_boundary_ids[blk_id]);
   }
 }
@@ -1745,12 +1783,14 @@ MooseMesh::getSubdomainIDs(const std::set<SubdomainName> & subdomain_name) const
 void
 MooseMesh::setSubdomainName(SubdomainID subdomain_id, const SubdomainName & name)
 {
+  mooseAssert(name != "ANY_BLOCK_ID", "Cannot set subdomain name to 'ANY_BLOCK_ID'");
   getMesh().subdomain_name(subdomain_id) = name;
 }
 
 void
 MooseMesh::setSubdomainName(MeshBase & mesh, SubdomainID subdomain_id, const SubdomainName & name)
 {
+  mooseAssert(name != "ANY_BLOCK_ID", "Cannot set subdomain name to 'ANY_BLOCK_ID'");
   mesh.subdomain_name(subdomain_id) = name;
 }
 
@@ -1784,9 +1824,9 @@ MooseMesh::setBoundaryName(BoundaryID boundary_id, BoundaryName name)
 }
 
 const std::string &
-MooseMesh::getBoundaryName(BoundaryID boundary_id)
+MooseMesh::getBoundaryName(BoundaryID boundary_id) const
 {
-  BoundaryInfo & boundary_info = getMesh().get_boundary_info();
+  const BoundaryInfo & boundary_info = getMesh().get_boundary_info();
 
   // We need to figure out if this boundary is a sideset or nodeset
   if (boundary_info.get_side_boundary_ids().count(boundary_id))
@@ -2910,10 +2950,6 @@ MooseMesh::init()
       getMesh().skip_partitioning(true);
     buildMesh();
 
-    // Re-enable partitioning so the splitter can partition!
-    if (_app.isSplitMesh())
-      getMesh().skip_partitioning(false);
-
     if (getParam<bool>("build_all_side_lowerd_mesh"))
       buildLowerDMesh();
   }
@@ -2968,6 +3004,14 @@ MooseMesh::getBoundaryIDs(const Elem * const elem, const unsigned short int side
   return ids;
 }
 
+std::vector<std::vector<BoundaryID>>
+MooseMesh::getBoundaryIDs(const Elem * const elem) const
+{
+  std::vector<std::vector<BoundaryID>> ids;
+  getMesh().get_boundary_info().side_boundary_ids(elem, ids);
+  return ids;
+}
+
 const std::set<BoundaryID> &
 MooseMesh::getBoundaryIDs() const
 {
@@ -2977,27 +3021,62 @@ MooseMesh::getBoundaryIDs() const
 void
 MooseMesh::buildNodeListFromSideList()
 {
-  if (_construct_node_list_from_side_list)
-    getMesh().get_boundary_info().build_node_list_from_side_list();
-}
+  auto & boundary_info = getMesh().get_boundary_info();
 
-void
-MooseMesh::buildSideList(std::vector<dof_id_type> & el,
-                         std::vector<unsigned short int> & sl,
-                         std::vector<boundary_id_type> & il)
-{
-#ifdef LIBMESH_ENABLE_DEPRECATED
-  mooseDeprecated("The version of MooseMesh::buildSideList() taking three arguments is "
-                  "deprecated, call the version that returns a vector of tuples instead.");
-  getMesh().get_boundary_info().build_side_list(el, sl, il);
-#else
-  libmesh_ignore(el);
-  libmesh_ignore(sl);
-  libmesh_ignore(il);
-  mooseError("The version of MooseMesh::buildSideList() taking three "
-             "arguments is not available in your version of libmesh, call the "
-             "version that returns a vector of tuples instead.");
-#endif
+  if (_construct_node_list_from_side_list)
+  {
+    const std::set<boundary_id_type> & side_bcids = boundary_info.get_side_boundary_ids();
+
+    if (_displace_node_list_by_side_list)
+    {
+      // Don't want to use auto here - the rbegin trick relies on a
+      // sorted set and we want the compiler to scream if libMesh ever
+      // switches type
+      const std::set<boundary_id_type> & node_bcids = boundary_info.get_node_boundary_ids();
+
+      // If we've got a reasonable largest BC id, we can just use the
+      // subsequent unused ones
+      boundary_id_type next_bcid = 0;
+      if (!node_bcids.empty())
+        next_bcid = std::max(next_bcid, cast_int<boundary_id_type>(*node_bcids.rbegin() + 1));
+      if (!side_bcids.empty())
+        next_bcid = std::max(next_bcid, cast_int<boundary_id_type>(*side_bcids.rbegin() + 1));
+
+      // We need all processors to agree on the id to use, even when
+      // each only sees the bcids on their own portions of a
+      // distributed mesh.
+      _communicator.max(next_bcid);
+
+      // If we've got an unreasonably high largest BC id, we should
+      // probably just search for unused ones with moderate values, so we
+      // don't risk wrapping.
+      if (next_bcid > 1000 || next_bcid <= 0)
+        next_bcid = 1000;
+
+      // If any side bcid is already a node bcid with a different name,
+      // that's a different boundary condition that we need to reassign
+      // rather than overwrite or merge to.
+      for (auto bcid : side_bcids)
+        if (node_bcids.count(bcid) &&
+            (boundary_info.get_sideset_name(bcid) != boundary_info.get_nodeset_name(bcid)))
+        {
+          boundary_info.renumber_node_id(bcid, next_bcid);
+          do
+          {
+            ++next_bcid;
+          } while (node_bcids.count(next_bcid) || side_bcids.count(next_bcid));
+        }
+    }
+
+    // For any side bcid that has a name, make sure that our new node
+    // bcid is given the same name.  We need to iterate over the
+    // actual name map (which is global) here, not over side_bcids
+    // (which only includes local ids on a distributed mesh).
+    for (auto & [id, name] : boundary_info.get_sideset_name_map())
+      boundary_info.nodeset_name(id) = name;
+
+    boundary_info.build_node_list_from_side_list();
+  }
 }
 
 std::vector<std::tuple<dof_id_type, unsigned short int, boundary_id_type>>
@@ -3144,7 +3223,7 @@ MooseMesh::prepared(bool state)
   // Some people may call this even before we have a MeshBase object. This isn't dangerous really
   // because when the MeshBase object is born, it knows it's in an unprepared state
   if (_mesh)
-    _mesh->set_isnt_prepared();
+    _mesh->unset_is_prepared();
 
   // If the libMesh mesh isn't preparead, then our MooseMesh wrapper is also no longer prepared
   _moose_mesh_prepared = false;
@@ -3248,7 +3327,7 @@ namespace // Anonymous namespace for helpers
 {
 // A class for templated methods that expect output iterator
 // arguments, which adds objects to the Mesh.
-// Although any mesh_inserter_iterator can add any object, we
+// Although extra_ghost_elem_inserter can add any object, we
 // template it around object type so that type inference and
 // iterator_traits will work.
 // This object specifically is used to insert extra ghost elems into the mesh
@@ -3694,6 +3773,10 @@ void
 MooseMesh::setCustomPartitioner(Partitioner * partitioner)
 {
   _custom_partitioner = partitioner->clone();
+  setIsCustomPartitionerRequested(true);
+  if (_mesh)
+    _mesh->partitioner() = _custom_partitioner->clone();
+  _partitioner_name = "custom";
 }
 
 bool
@@ -3768,9 +3851,19 @@ MooseMesh::buildFiniteVolumeInfo() const
 
   // We prepare a map connecting the Elem* and the corresponding ElemInfo
   // for the active elements.
+  _elem_to_elem_info.reserve(nActiveLocalElem());
+  unsigned int num_sides = 0;
   for (const Elem * elem : as_range(begin, end))
+  {
     _elem_to_elem_info.emplace(elem->id(), elem);
+    num_sides += elem->n_sides();
+  }
 
+  // Used to speed up FaceInfo creation:
+  // - element side builder that caches per type of element
+  libMesh::ElemSideBuilder side_builder;
+
+  _all_face_info.reserve(num_sides / 2);
   dof_id_type face_index = 0;
   for (const Elem * elem : as_range(begin, end))
   {
@@ -3789,7 +3882,9 @@ MooseMesh::buildFiniteVolumeInfo() const
                     "be active.");
 
         // We construct the faceInfo using the elementinfo and side index
-        _all_face_info.emplace_back(&_elem_to_elem_info[elem->id()], side, face_index++);
+        mooseAssert(elem->default_order() < 4, "Did not expect such high element orders in FV");
+        _all_face_info.emplace_back(
+            &_elem_to_elem_info[elem->id()], side, face_index++, side_builder);
 
         auto & fi = _all_face_info.back();
 
@@ -3823,6 +3918,9 @@ MooseMesh::buildFiniteVolumeInfo() const
   // Build the local face info and elem_side to face info maps. We need to do this after
   // _all_face_info is finished being constructed because emplace_back invalidates all iterators and
   // references if ever the new size exceeds capacity
+  _elem_side_to_face_info.reserve(_all_face_info.size());
+  // heuristic to avoid resizing too much
+  _face_info.reserve(_all_face_info.size());
   for (auto & fi : _all_face_info)
   {
     const Elem * const elem = &fi.elem();
@@ -3841,6 +3939,7 @@ MooseMesh::buildFiniteVolumeInfo() const
       _face_info.push_back(&fi);
   }
 
+  _elem_info.reserve(nActiveLocalElem());
   for (auto & ei : _elem_to_elem_info)
     if (ei.second.elem()->processor_id() == this->processor_id())
       _elem_info.push_back(&ei.second);
@@ -3892,8 +3991,8 @@ MooseMesh::computeFiniteVolumeCoords() const
 MooseEnum
 MooseMesh::partitioning()
 {
-  MooseEnum partitioning("default=-3 metis=-2 parmetis=-1 linear=0 centroid hilbert_sfc morton_sfc",
-                         "default");
+  MooseEnum partitioning(
+      "default=-3 metis=-2 parmetis=-1 linear=0 centroid hilbert_sfc morton_sfc custom", "default");
   return partitioning;
 }
 
@@ -4097,6 +4196,32 @@ MooseMesh::setCoordSystem(const std::vector<SubdomainName> & blocks,
     mooseError("Supplied coordinate systems in the 'setCoordSystem' method do not match the value "
                "of the 'Mesh/coord_type' parameter. Did you provide different parameter values for "
                "'coord_type' to 'Mesh' and 'Problem'?");
+
+  // If blocks contain ANY_BLOCK_ID, it should be the only block specified, and coord_sys should
+  // have one and only one entry. In that case, the same coordinate system will be set for all
+  // subdomains.
+  if (blocks.size() == 1 && blocks[0] == "ANY_BLOCK_ID")
+  {
+    if (coord_sys.size() > 1)
+      mooseError("If you specify ANY_BLOCK_ID as the only block, you must also specify a single "
+                 "coordinate system for it.");
+    if (!_mesh->is_prepared())
+      mooseError(
+          "You cannot set the coordinate system for ANY_BLOCK_ID before the mesh is prepared. "
+          "Please call this method after the mesh is prepared.");
+    const auto coord_type = coord_sys.size() == 0
+                                ? Moose::COORD_XYZ
+                                : Moose::stringToEnum<Moose::CoordinateSystemType>(coord_sys[0]);
+    for (const auto sid : meshSubdomains())
+      _coord_sys[sid] = coord_type;
+    return;
+  }
+
+  // If multiple blocks are specified, but one of them is ANY_BLOCK_ID, let's emit a helpful error
+  if (std::find(blocks.begin(), blocks.end(), "ANY_BLOCK_ID") != blocks.end())
+    mooseError("You cannot specify ANY_BLOCK_ID together with other blocks in the "
+               "setCoordSystem() method. If you want to set the same coordinate system for all "
+               "blocks, use ANY_BLOCK_ID as the only block.");
 
   auto subdomains = meshSubdomains();
   // It's possible that a user has called this API before the mesh is prepared and consequently we
@@ -4365,4 +4490,10 @@ const std::vector<QpMap> &
 MooseMesh::getPCoarseningSideMap(const Elem & elem) const
 {
   return getPCoarseningMapHelper(elem, _elem_type_to_p_coarsening_side_map);
+}
+
+bool
+MooseMesh::skipNoncriticalPartitioning() const
+{
+  return _mesh->skip_noncritical_partitioning();
 }

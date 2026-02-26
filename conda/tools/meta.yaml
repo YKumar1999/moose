@@ -3,7 +3,7 @@
 #   moose-dev/*
 #
 # As well as any directions pertaining to modifying those files.
-{% set version = "2025.06.26" %}
+{% set version = "2026.02.16" %}
 
 package:
   name: moose-tools
@@ -29,10 +29,12 @@ requirements:
     #       moose-python. This allows folks that build their own PETSc, libMesh, WASP,
     #       etc combos, to continue to do so with only needing the moose-mpi package.
     - beautifulsoup4
+    - {{ black }}
     - {{ clang_format }}
     - {{ clang_tools }}
+    - coverage 7.13.2
     - deepdiff
-    - git-lfs <3.5.1
+    - git-lfs
     - gitpython
     - graphviz
     - h5py
@@ -40,7 +42,7 @@ requirements:
     - livereload
     - lxml
     - mako
-    - matplotlib-base !=3.9.0
+    - matplotlib-base
     - mock
     - numpy
     - packaging
@@ -56,9 +58,12 @@ requirements:
     - pylatexenc
     - pylint
     - pymongo
+    - pytest
+    - pytest-cov
     - python
     - pyyaml
     - requests
+    - {{ ruff }}
     - scikit-image
     - setuptools
     - sympy
@@ -68,13 +73,16 @@ requirements:
     - yaml
 test:
   commands:
+    - black --version
     - clang-format --version
     - dot -V
     - git-lfs --version
     - pg_config --help
+    - ruff --version
   imports:
     - bs4
     - deepdiff
+    - coverage
     - git
     - jinja2
     - livereload
@@ -91,6 +99,7 @@ test:
     - pylatexenc
     - pylint
     - pymongo
+    - pytest
     - requests
     - skimage
     - sympy
@@ -108,6 +117,5 @@ about:
 
 extra:
   recipe-maintainers:
-    - milljm
     - cticenhour
     - loganharbour
